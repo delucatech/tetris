@@ -2,494 +2,189 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Simple Tetris for Oculus Quest</title>
+  <title>AR Tetris on Oculus Quest 3</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background-color: #000;
-      font-family: Arial, sans-serif;
-    }
-    
-    #game-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    #game-board {
-      border: 2px solid #444;
-      background-color: #111;
-      position: relative;
-    }
-    
-    .tetris-block {
-      position: absolute;
-      box-sizing: border-box;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    
-    #game-status {
-      color: white;
-      margin-top: 20px;
-      font-size: 24px;
-      text-align: center;
-    }
-    
-    #controls {
-      margin-top: 20px;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      grid-gap: 10px;
-    }
-    
-    #controls button {
-      padding: 15px;
-      font-size: 20px;
-      background-color: #333;
-      color: white;
-      border: none;
-      border-radius: 5px;
-      min-width: 60px;
-      min-height: 60px;
-    }
-    
-    #start-btn {
-      grid-column: 1 / span 3;
-      background-color: #4CAF50 !important;
-      font-weight: bold;
-    }
-    
-    #pause-btn {
-      grid-column: 1 / span 3;
-      background-color: #2196F3 !important;
-    }
-    
-    .hidden {
-      display: none !important;
-    }
-    
-    #game-over {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-color: rgba(0, 0, 0, 0.8);
-      color: white;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      display: none;
-    }
-    
-    #restart-btn {
-      margin-top: 20px;
-      padding: 15px 30px;
-      font-size: 20px;
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 5px;
-    }
+    body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: black; }
+    #debug-panel { position: absolute; bottom: 10px; left: 10px; color: white; background: rgba(0,0,0,0.8); padding: 10px; z-index: 1000; }
+    #status-indicator { position: absolute; top: 10px; right: 10px; padding: 5px 10px; border-radius: 5px; font-weight: bold; z-index: 1000; background-color: red; color: white; }
   </style>
 </head>
 <body>
-  <div id="game-container">
-    <div id="game-board"></div>
-    
-    <div id="game-status">
-      <div>Score: <span id="score">0</span></div>
-      <div>Level: <span id="level">1</span></div>
-      <div>Lines: <span id="lines">0</span></div>
-    </div>
-    
-    <div id="controls">
-      <button id="start-btn">Start Game</button>
-      <button id="pause-btn" class="hidden">Pause</button>
-      <button id="move-left">←</button>
-      <button id="rotate">↻</button>
-      <button id="move-right">→</button>
-      <button id="move-down">↓</button>
-      <button id="drop">⤓</button>
-    </div>
-    
-    <div id="game-over">
-      <h2>Game Over!</h2>
-      <p>Final Score: <span id="final-score">0</span></p>
-      <button id="restart-btn">Play Again</button>
-    </div>
-  </div>
 
-  <script>
-    // Constants
-    const COLS = 10;
-    const ROWS = 20;
-    const BLOCK_SIZE = 25;
-    const COLORS = [
-      null,
-      '#FF0D72', // Z
-      '#0DC2FF', // J
-      '#0DFF72', // S
-      '#F538FF', // T
-      '#FF8E0D', // L
-      '#FFE138', // O
-      '#3877FF'  // I
-    ];
-    
-    // Game elements
-    const gameBoard = document.getElementById('game-board');
-    const scoreElement = document.getElementById('score');
-    const levelElement = document.getElementById('level');
-    const linesElement = document.getElementById('lines');
-    const startButton = document.getElementById('start-btn');
-    const pauseButton = document.getElementById('pause-btn');
-    const moveLeftButton = document.getElementById('move-left');
-    const moveRightButton = document.getElementById('move-right');
-    const moveDownButton = document.getElementById('move-down');
-    const rotateButton = document.getElementById('rotate');
-    const dropButton = document.getElementById('drop');
-    const gameOverScreen = document.getElementById('game-over');
-    const finalScoreElement = document.getElementById('final-score');
-    const restartButton = document.getElementById('restart-btn');
-    
-    // Set board size
-    gameBoard.style.width = COLS * BLOCK_SIZE + 'px';
-    gameBoard.style.height = ROWS * BLOCK_SIZE + 'px';
-    
-    // Game state
-    let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-    let score = 0;
-    let level = 1;
-    let lines = 0;
-    let isGameOver = false;
-    let isPaused = false;
-    let dropInterval;
-    let dropCounter = 0;
-    let dropSpeed = 1000;
-    let lastTime = 0;
-    let requestId;
-    let currentPiece;
-    
-    // Tetromino shapes
-    const TETROMINOS = {
-      Z: { shape: [[1, 1, 0], [0, 1, 1], [0, 0, 0]], color: 1 },
-      J: { shape: [[0, 2, 0], [0, 2, 0], [2, 2, 0]], color: 2 },
-      S: { shape: [[0, 3, 3], [3, 3, 0], [0, 0, 0]], color: 3 },
-      T: { shape: [[0, 4, 0], [4, 4, 4], [0, 0, 0]], color: 4 },
-      L: { shape: [[0, 5, 0], [0, 5, 0], [0, 5, 5]], color: 5 },
-      O: { shape: [[6, 6], [6, 6]], color: 6 },
-      I: { shape: [[0, 0, 0, 0], [7, 7, 7, 7], [0, 0, 0, 0], [0, 0, 0, 0]], color: 7 }
-    };
-    
-    // Initialize the player's piece
-    function createPiece() {
-      const pieces = 'ZIJLTSOZ';
-      const randomPiece = pieces[Math.floor(Math.random() * pieces.length)];
-      return {
-        tetromino: TETROMINOS[randomPiece],
-        position: { x: Math.floor(COLS / 2) - Math.floor(TETROMINOS[randomPiece].shape[0].length / 2), y: 0 }
-      };
-    }
-    
-    // Reset the game
-    function resetGame() {
-      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-      score = 0;
-      level = 1;
-      lines = 0;
-      dropSpeed = 1000;
-      isGameOver = false;
-      isPaused = false;
-      
-      // Clear the board
-      while (gameBoard.firstChild) {
-        gameBoard.removeChild(gameBoard.firstChild);
-      }
-      
-      // Update display
-      scoreElement.textContent = score;
-      levelElement.textContent = level;
-      linesElement.textContent = lines;
-      
-      // Start the game
-      currentPiece = createPiece();
-      gameOverScreen.style.display = 'none';
-      createBoard();
-      draw();
-      update();
-    }
-    
-    // Create visual board
-    function createBoard() {
-      for (let y = 0; y < ROWS; y++) {
-        for (let x = 0; x < COLS; x++) {
-          if (board[y][x]) {
-            const block = document.createElement('div');
-            block.classList.add('tetris-block');
-            block.style.width = BLOCK_SIZE + 'px';
-            block.style.height = BLOCK_SIZE + 'px';
-            block.style.left = x * BLOCK_SIZE + 'px';
-            block.style.top = y * BLOCK_SIZE + 'px';
-            block.style.backgroundColor = COLORS[board[y][x]];
-            gameBoard.appendChild(block);
-          }
+<div id="status-indicator">INITIALIZING...</div>
+<div id="debug-panel">Debug log initialized...</div>
+<button id="start-btn" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px; background: green; color: white; font-size: 18px;">Start Game (Non-AR)</button>
+
+<script type="module">
+  import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+  import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js';
+  import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+  let scene, camera, renderer, controls;
+  let boardGroup, activePieceGroup;
+  let gameStarted = false;
+  let boardPlaced = false;
+  let hitTestSource = null;
+  let localSpace = null;
+  let reticle = null;
+
+  function log(message) {
+    console.log(message);
+    document.getElementById('debug-panel').textContent += '\n' + message;
+  }
+
+  function setStatus(status) {
+    document.getElementById('status-indicator').textContent = status;
+  }
+
+  function initThreeJS() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000000);
+
+    camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setClearColor(0x000000, 1);
+    renderer.xr.enabled = true;
+
+    document.body.appendChild(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, -1);
+    controls.update();
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const light = new THREE.DirectionalLight(0xffffff, 0.8);
+    light.position.set(1, 2, 3);
+    scene.add(light);
+
+    boardGroup = new THREE.Group();
+    scene.add(boardGroup);
+
+    activePieceGroup = new THREE.Group();
+    scene.add(activePieceGroup);
+
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const material = new THREE.MeshBasicMaterial({ color: 0x555555, side: THREE.DoubleSide });
+    const ground = new THREE.Mesh(geometry, material);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.01;
+    boardGroup.add(ground);
+
+    const reticleGeometry = new THREE.RingGeometry(0.05, 0.06, 32);
+    reticleGeometry.rotateX(-Math.PI / 2);
+    const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.8 });
+    reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+
+    setStatus("Three.js Initialized");
+  }
+
+  function addARButton() {
+    document.body.appendChild(ARButton.createButton(renderer, {
+      requiredFeatures: ['hit-test'],
+      optionalFeatures: ['dom-overlay'],
+      domOverlay: { root: document.body }
+    }));
+  }
+
+  function startGame() {
+    if (gameStarted) return;
+    gameStarted = true;
+    setStatus("Game Started");
+    document.getElementById('start-btn').style.display = "none";
+
+    const cubeGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+    cube.position.set(0, 0.2, -1);
+    scene.add(cube);
+
+    renderer.setAnimationLoop(animate);
+  }
+
+  function setupXR() {
+    renderer.xr.addEventListener('sessionstart', async () => {
+      setStatus("XR Session Started");
+      const session = renderer.xr.getSession();
+      const viewerSpace = await session.requestReferenceSpace('viewer');
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+      localSpace = await session.requestReferenceSpace('local');
+
+      session.addEventListener('select', () => {
+        if (!boardPlaced) {
+          const matrix = new THREE.Matrix4();
+          matrix.fromArray(reticle.matrix.elements);
+          const position = new THREE.Vector3();
+          position.setFromMatrixPosition(matrix);
+          boardGroup.position.copy(position);
+          boardPlaced = true;
+          setStatus("Board Placed");
+          startGame();
+        }
+      });
+    });
+
+    renderer.xr.addEventListener('sessionend', () => {
+      setStatus("XR Session Ended");
+      hitTestSource = null;
+      localSpace = null;
+    });
+  }
+
+  function animate(timestamp, frame) {
+    if (frame) {
+      const session = renderer.xr.getSession();
+      if (hitTestSource && !boardPlaced) {
+        const hitTestResults = frame.getHitTestResults(hitTestSource);
+        if (hitTestResults.length > 0) {
+          const hit = hitTestResults[0];
+          const hitPose = hit.getPose(localSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(hitPose.transform.matrix);
+        } else {
+          reticle.visible = false;
         }
       }
     }
-    
-    // Draw the current piece
-    function draw() {
-      if (!currentPiece) return;
-      
-      currentPiece.tetromino.shape.forEach((row, y) => {
-        row.forEach((value, x) => {
-          if (value) {
-            const block = document.createElement('div');
-            block.classList.add('tetris-block');
-            block.style.width = BLOCK_SIZE + 'px';
-            block.style.height = BLOCK_SIZE + 'px';
-            block.style.left = (currentPiece.position.x + x) * BLOCK_SIZE + 'px';
-            block.style.top = (currentPiece.position.y + y) * BLOCK_SIZE + 'px';
-            block.style.backgroundColor = COLORS[value];
-            gameBoard.appendChild(block);
-          }
-        });
-      });
-    }
-    
-    // Move the current piece
-    function movePiece(dir) {
-      currentPiece.position.x += dir;
-      if (checkCollision()) {
-        currentPiece.position.x -= dir;
-        return false;
+
+    renderer.render(scene, camera);
+  }
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  document.getElementById('start-btn').addEventListener('click', () => {
+    startGame();
+  });
+
+  initThreeJS();
+  
+  if ('xr' in navigator) {
+    navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+      if (supported) {
+        setStatus("XR Available - Tap AR Button");
+        addARButton();
+        setupXR();
+      } else {
+        setStatus("No AR - Playing in Normal Mode");
       }
-      return true;
-    }
-    
-    // Rotate the current piece
-    function rotatePiece() {
-      const originalShape = currentPiece.tetromino.shape;
-      // Deep clone the shape array
-      const shape = JSON.parse(JSON.stringify(originalShape));
-      const newShape = [];
-      
-      // Transpose matrix
-      for (let y = 0; y < shape[0].length; y++) {
-        newShape.push([]);
-        for (let x = 0; x < shape.length; x++) {
-          newShape[y].push(shape[x][y]);
-        }
-      }
-      
-      // Reverse each row
-      currentPiece.tetromino.shape = newShape.map(row => row.reverse());
-      
-      // If collision, revert rotation
-      if (checkCollision()) {
-        currentPiece.tetromino.shape = originalShape;
-        return false;
-      }
-      
-      return true;
-    }
-    
-    // Check for collision
-    function checkCollision() {
-      return currentPiece.tetromino.shape.some((row, y) => {
-        return row.some((value, x) => {
-          if (!value) return false;
-          
-          const boardX = currentPiece.position.x + x;
-          const boardY = currentPiece.position.y + y;
-          
-          return (
-            boardX < 0 || 
-            boardX >= COLS || 
-            boardY >= ROWS ||
-            (boardY >= 0 && board[boardY][boardX])
-          );
-        });
-      });
-    }
-    
-    // Merge piece with the board
-    function mergePiece() {
-      currentPiece.tetromino.shape.forEach((row, y) => {
-        row.forEach((value, x) => {
-          if (value) {
-            const boardY = currentPiece.position.y + y;
-            const boardX = currentPiece.position.x + x;
-            if (boardY >= 0) {
-              board[boardY][boardX] = value;
-            }
-          }
-        });
-      });
-      
-      // Check if a line is completed
-      checkLines();
-      
-      // Get new piece
-      currentPiece = createPiece();
-      
-      // Check for game over
-      if (checkCollision()) {
-        gameOver();
-      }
-    }
-    
-    // Check for completed lines
-    function checkLines() {
-      let linesCleared = 0;
-      
-      outer: for (let y = ROWS - 1; y >= 0; y--) {
-        for (let x = 0; x < COLS; x++) {
-          if (!board[y][x]) continue outer;
-        }
-        
-        // Remove the line
-        const row = board.splice(y, 1)[0].fill(0);
-        board.unshift(row);
-        y++;
-        linesCleared++;
-      }
-      
-      if (linesCleared > 0) {
-        // Update score
-        score += linesCleared * 100 * level;
-        lines += linesCleared;
-        level = Math.floor(lines / 10) + 1;
-        dropSpeed = Math.max(100, 1000 - (level - 1) * 100);
-        
-        // Update display
-        scoreElement.textContent = score;
-        levelElement.textContent = level;
-        linesElement.textContent = lines;
-      }
-    }
-    
-    // Drop the piece faster or lock it in place
-    function dropPiece() {
-      currentPiece.position.y++;
-      if (checkCollision()) {
-        currentPiece.position.y--;
-        mergePiece();
-      }
-    }
-    
-    // Hard drop the piece
-    function hardDrop() {
-      while (!checkCollision()) {
-        currentPiece.position.y++;
-      }
-      currentPiece.position.y--;
-      mergePiece();
-    }
-    
-    // Game over
-    function gameOver() {
-      isGameOver = true;
-      cancelAnimationFrame(requestId);
-      finalScoreElement.textContent = score;
-      gameOverScreen.style.display = 'flex';
-    }
-    
-    // Update game state
-    function update(time = 0) {
-      if (isGameOver || isPaused) return;
-      
-      const deltaTime = time - lastTime;
-      lastTime = time;
-      
-      dropCounter += deltaTime;
-      if (dropCounter > dropSpeed) {
-        dropPiece();
-        dropCounter = 0;
-      }
-      
-      // Clear the board
-      while (gameBoard.firstChild) {
-        gameBoard.removeChild(gameBoard.firstChild);
-      }
-      
-      // Draw the board and current piece
-      createBoard();
-      draw();
-      
-      requestId = requestAnimationFrame(update);
-    }
-    
-    // Event listeners
-    startButton.addEventListener('click', () => {
-      startButton.classList.add('hidden');
-      pauseButton.classList.remove('hidden');
-      resetGame();
+    }).catch(() => {
+      setStatus("XR Error - Normal Mode");
     });
-    
-    pauseButton.addEventListener('click', () => {
-      isPaused = !isPaused;
-      pauseButton.textContent = isPaused ? 'Resume' : 'Pause';
-      if (!isPaused) {
-        lastTime = 0;
-        update();
-      }
-    });
-    
-    restartButton.addEventListener('click', resetGame);
-    
-    moveLeftButton.addEventListener('click', () => {
-      if (!isPaused && !isGameOver) movePiece(-1);
-    });
-    
-    moveRightButton.addEventListener('click', () => {
-      if (!isPaused && !isGameOver) movePiece(1);
-    });
-    
-    moveDownButton.addEventListener('click', () => {
-      if (!isPaused && !isGameOver) dropPiece();
-    });
-    
-    rotateButton.addEventListener('click', () => {
-      if (!isPaused && !isGameOver) rotatePiece();
-    });
-    
-    dropButton.addEventListener('click', () => {
-      if (!isPaused && !isGameOver) hardDrop();
-    });
-    
-    // Keyboard controls
-    document.addEventListener('keydown', event => {
-      if (isPaused || isGameOver) return;
-      
-      switch (event.key) {
-        case 'ArrowLeft':
-          movePiece(-1);
-          break;
-        case 'ArrowRight':
-          movePiece(1);
-          break;
-        case 'ArrowDown':
-          dropPiece();
-          break;
-        case 'ArrowUp':
-          rotatePiece();
-          break;
-        case ' ':
-          hardDrop();
-          break;
-      }
-    });
-  </script>
+  } else {
+    setStatus("No WebXR Support - Normal Mode");
+  }
+
+</script>
 </body>
 </html>
