@@ -5,7 +5,40 @@
   <title>AR Tetris on Oculus Quest 3</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
-    body { margin: 0; overflow: hidden; }
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    
+    /* Debug panel */
+    #debug-panel {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      color: white;
+      background: rgba(0,0,0,0.7);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 100;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    
+    #debug-log {
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      margin-bottom: 10px;
+    }
+    
+    #state-info {
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+    
+    #debug-controls {
+      display: flex;
+      gap: 10px;
+    }
+    
     /* Simple HUD overlay for score and controls */
     #hud {
       position: absolute;
@@ -14,12 +47,14 @@
       color: white;
       font-family: sans-serif;
       z-index: 1;
-      background: rgba(0,0,0,0.5);
+      background: rgba(0,0,0,0.7);
       padding: 10px;
       border-radius: 5px;
     }
+    
     #hud > div { margin-bottom: 5px; }
     button { font-size: 16px; margin: 5px 0; padding: 8px 12px; }
+    
     /* Make buttons more touch-friendly for Quest 3 */
     #control-buttons {
       display: grid;
@@ -27,8 +62,25 @@
       gap: 8px;
       margin-top: 10px;
     }
+    
     #control-buttons button {
       min-height: 44px;
+    }
+    
+    /* Extra visibility */
+    #start-btn {
+      background-color: #4CAF50;
+      color: white;
+      font-weight: bold;
+    }
+    
+    .debug-button {
+      background-color: #ff9800;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -55,6 +107,18 @@
       <button id="hard-drop">Drop</button>
     </div>
   </div>
+  
+  <!-- Debug panel -->
+  <div id="debug-panel">
+    <div id="state-info">State: Initializing...</div>
+    <div id="debug-log">Debug log initialized.</div>
+    <div id="debug-controls">
+      <button class="debug-button" id="debug-place-board">Force Place Board</button>
+      <button class="debug-button" id="toggle-debug">Show/Hide Debug</button>
+      <button class="debug-button" id="clear-log">Clear Log</button>
+      <button class="debug-button" id="check-xr">Check XR Status</button>
+    </div>
+  </div>
 
   <!-- Three.js and AR code -->
   <script type="module">
@@ -62,8 +126,92 @@
     import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/ARButton.js';
     import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 
+    // Debug utilities
+    const debugLog = document.getElementById('debug-log');
+    const stateInfo = document.getElementById('state-info');
+    const toggleDebugBtn = document.getElementById('toggle-debug');
+    const clearLogBtn = document.getElementById('clear-log');
+    const checkXRBtn = document.getElementById('check-xr');
+    const debugPlaceBoardBtn = document.getElementById('debug-place-board');
+    const debugPanel = document.getElementById('debug-panel');
+    
+    let logMessages = [];
+    const MAX_LOG_MESSAGES = 20;
+    
+    function log(message) {
+      console.log(message); // Also log to browser console
+      const timestamp = new Date().toLocaleTimeString();
+      logMessages.push(`[${timestamp}] ${message}`);
+      
+      // Keep log size manageable
+      if (logMessages.length > MAX_LOG_MESSAGES) {
+        logMessages.shift();
+      }
+      
+      debugLog.textContent = logMessages.join('\n');
+      debugLog.scrollTop = debugLog.scrollHeight; // Auto-scroll to bottom
+    }
+    
+    function updateStateInfo() {
+      let stateText = `XR Available: ${navigator.xr ? 'Yes' : 'No'}\n`;
+      stateText += `XR Session Active: ${renderer.xr.isPresenting ? 'Yes' : 'No'}\n`;
+      stateText += `Board Placed: ${boardPlaced ? 'Yes' : 'No'}\n`;
+      stateText += `Game State: ${isGameOver ? 'Game Over' : isPaused ? 'Paused' : gameInterval ? 'Running' : 'Stopped'}\n`;
+      stateText += `Current Piece: ${currentPiece ? 'Yes' : 'No'}\n`;
+      
+      stateInfo.textContent = stateText;
+    }
+    
+    // Debug panel controls
+    toggleDebugBtn.addEventListener('click', () => {
+      debugPanel.style.display = debugPanel.style.display === 'none' ? 'block' : 'none';
+    });
+    
+    clearLogBtn.addEventListener('click', () => {
+      logMessages = [];
+      debugLog.textContent = 'Log cleared.';
+    });
+    
+    checkXRBtn.addEventListener('click', () => {
+      log('Checking XR status...');
+      
+      if (!navigator.xr) {
+        log('ERROR: WebXR API not available in this browser');
+        return;
+      }
+      
+      navigator.xr.isSessionSupported('immersive-ar').then(supported => {
+        log(`AR Session Support: ${supported ? 'YES' : 'NO'}`);
+      });
+      
+      // Report additional info
+      log(`XR Session Active: ${renderer.xr.isPresenting ? 'Yes' : 'No'}`);
+      log(`Hit Test Source: ${hitTestSource ? 'Available' : 'Not Available'}`);
+      
+      // Check display settings
+      log(`Device Pixel Ratio: ${window.devicePixelRatio}`);
+      log(`Canvas Size: ${renderer.domElement.width} x ${renderer.domElement.height}`);
+      
+      updateStateInfo();
+    });
+    
+    debugPlaceBoardBtn.addEventListener('click', () => {
+      log('Forcing board placement...');
+      if (!boardPlaced) {
+        boardGroup.position.set(0, 0, -1);
+        boardGroup.userData.placed = true;
+        boardPlaced = true;
+        log('Board forcibly placed at position (0, 0, -1)');
+        updateScene();
+      } else {
+        log('Board already placed. Current position:');
+        log(`x: ${boardGroup.position.x.toFixed(2)}, y: ${boardGroup.position.y.toFixed(2)}, z: ${boardGroup.position.z.toFixed(2)}`);
+      }
+      updateStateInfo();
+    });
+
     // --- Game configuration and state ---
-    const cellSize = 0.05; // Reduced world units per Tetris cell for better scale on Quest 3
+    const cellSize = 0.05; // world units per Tetris cell
     const COLS = 10, ROWS = 20;
     const boardHeight = ROWS * cellSize; // used for coordinate mapping
 
@@ -194,13 +342,18 @@
     }
 
     function movePiece(offsetX, offsetY) {
-      if (!currentPiece || isPaused || isGameOver) return false;
+      if (!currentPiece || isPaused || isGameOver) {
+        log(`Move failed - Game state: ${isGameOver ? 'Game Over' : isPaused ? 'Paused' : !currentPiece ? 'No current piece' : 'Unknown'}`);
+        return false;
+      }
+      
       if (isValidMove(currentPiece, offsetX, offsetY)) {
         currentPiece.position.x += offsetX;
         currentPiece.position.y += offsetY;
         updateScene();
         return true;
       }
+      
       return false;
     }
 
@@ -252,6 +405,8 @@
     }
 
     function lockPiece() {
+      log('Locking piece into board');
+      
       const { shape, position, color } = currentPiece;
       shape.forEach((row, rowIndex) => {
         row.forEach((value, colIndex) => {
@@ -290,6 +445,9 @@
         scoreElement.textContent = score;
         levelElement.textContent = level;
         linesElement.textContent = lines;
+        
+        log(`Cleared ${linesCleared} lines! Score: ${score}, Level: ${level}`);
+        
         if (gameInterval) {
           clearInterval(gameInterval);
           gameInterval = setInterval(dropPiece, dropSpeed);
@@ -313,31 +471,100 @@
     }
 
     // --- Three.js AR scene setup ---
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.xr.enabled = true;
-    document.body.appendChild(renderer.domElement);
+    log('Initializing Three.js and WebXR...');
     
-    // Add fallback orbit controls for non-AR testing
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 0, -1);
-    controls.enableDamping = true;
-    controls.enabled = true;
+    let scene, camera, renderer, controls;
     
-    // Improved AR button with options for Quest 3
-    document.body.appendChild(
-      ARButton.createButton(renderer, { 
-        requiredFeatures: ['hit-test', 'local-floor'],
-        optionalFeatures: ['hand-tracking', 'plane-detection'],
-        sessionInit: {
-          environmentIntegration: true,
-          depthSensing: { usagePreference: ['cpu-optimized'] }
-        }
-      })
-    );
+    try {
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+      
+      renderer = new THREE.WebGLRenderer({ 
+        antialias: true, 
+        alpha: true,
+        preserveDrawingBuffer: true // Helps with debugging
+      });
+      
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      
+      log(`Renderer created: ${renderer.domElement.width} x ${renderer.domElement.height}, Pixel Ratio: ${window.devicePixelRatio}`);
+      
+      try {
+        renderer.xr.enabled = true;
+        log('WebXR enabled on renderer');
+      } catch (xrError) {
+        log(`ERROR enabling XR: ${xrError.message}`);
+      }
+      
+      document.body.appendChild(renderer.domElement);
+      
+      // Add fallback orbit controls for non-AR testing
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, -1);
+      controls.enableDamping = true;
+      controls.enabled = true;
+      
+      log('Orbit controls initialized');
+    } catch (error) {
+      log(`ERROR in Three.js setup: ${error.message}`);
+    }
+    
+    // Check for WebXR support
+    let xrSupported = false;
+    if (navigator.xr) {
+      navigator.xr.isSessionSupported('immersive-ar')
+        .then(supported => {
+          xrSupported = supported;
+          log(`WebXR AR Support: ${supported ? 'Available' : 'Not Available'}`);
+          
+          if (supported) {
+            addARButton();
+          } else {
+            log('WARNING: AR not supported, falling back to non-AR mode');
+            // Still add a way to start in non-AR mode
+            const nonARBtn = document.createElement('button');
+            nonARBtn.textContent = 'Start in Non-AR Mode';
+            nonARBtn.style.position = 'absolute';
+            nonARBtn.style.bottom = '20px';
+            nonARBtn.style.right = '20px';
+            nonARBtn.style.padding = '12px';
+            nonARBtn.style.fontSize = '16px';
+            nonARBtn.addEventListener('click', () => {
+              boardGroup.position.set(0, 0, -1);
+              boardGroup.userData.placed = true;
+              boardPlaced = true;
+              updateScene();
+              startGame();
+            });
+            document.body.appendChild(nonARBtn);
+          }
+        })
+        .catch(err => {
+          log(`ERROR checking AR support: ${err.message}`);
+        });
+    } else {
+      log('ERROR: WebXR API not available in this browser');
+    }
+    
+    function addARButton() {
+      try {
+        // Improved AR button with options for Quest 3
+        const arButton = ARButton.createButton(renderer, { 
+          requiredFeatures: ['hit-test'],
+          optionalFeatures: ['dom-overlay', 'hand-tracking'],
+          domOverlay: { root: document.body },
+          sessionInit: {
+            environmentIntegration: true
+          }
+        });
+        
+        document.body.appendChild(arButton);
+        log('AR Button added to document');
+      } catch (err) {
+        log(`ERROR adding AR button: ${err.message}`);
+      }
+    }
 
     // Better lighting for AR on Quest 3
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -346,6 +573,8 @@
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(1, 2, 3);
     scene.add(directionalLight);
+    
+    log('Lighting set up');
 
     // Groups for the locked board cells, active falling piece, and ghost (shadow) piece
     const boardGroup = new THREE.Group();
@@ -353,29 +582,50 @@
     scene.add(boardGroup);
     
     // Adding board outline for better visibility in AR
-    const boardOutlineGeometry = new THREE.BoxGeometry(
-      COLS * cellSize, ROWS * cellSize, cellSize/10
-    );
-    boardOutlineGeometry.translate(0, boardHeight/2 - cellSize/2, -cellSize/10);
-    
-    const boardOutlineMaterial = new THREE.MeshBasicMaterial({
-      color: 0xFFFFFF,
-      transparent: true,
-      opacity: 0.3,
-      wireframe: true
-    });
-    const boardOutline = new THREE.Mesh(boardOutlineGeometry, boardOutlineMaterial);
-    boardGroup.add(boardOutline);
+    try {
+      const boardOutlineGeometry = new THREE.BoxGeometry(
+        COLS * cellSize, ROWS * cellSize, cellSize/10
+      );
+      boardOutlineGeometry.translate(0, boardHeight/2 - cellSize/2, -cellSize/10);
+      
+      const boardOutlineMaterial = new THREE.MeshBasicMaterial({
+        color: 0xFFFFFF,
+        transparent: true,
+        opacity: 0.3,
+        wireframe: true
+      });
+      const boardOutline = new THREE.Mesh(boardOutlineGeometry, boardOutlineMaterial);
+      boardGroup.add(boardOutline);
+      
+      // Add a ground plane for better visibility
+      const groundGeometry = new THREE.PlaneGeometry(COLS * cellSize * 2, COLS * cellSize * 2);
+      groundGeometry.rotateX(-Math.PI / 2);
+      const groundMaterial = new THREE.MeshBasicMaterial({ 
+        color: 0x444444, 
+        transparent: true, 
+        opacity: 0.3,
+        side: THREE.DoubleSide
+      });
+      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      ground.position.y = -0.01;
+      boardGroup.add(ground);
+      
+      log('Board outline and ground plane created');
+    } catch (error) {
+      log(`ERROR creating board outline: ${error.message}`);
+    }
     
     const activePieceGroup = new THREE.Group();
     scene.add(activePieceGroup);
     
     const ghostGroup = new THREE.Group();
     scene.add(ghostGroup);
+    
+    log('Scene groups initialized');
 
     // Improved reticle for AR hit testing
     let reticle;
-    {
+    try {
       const geometry = new THREE.RingGeometry(0.05, 0.06, 32);
       geometry.rotateX(-Math.PI / 2);
       const material = new THREE.MeshBasicMaterial({ 
@@ -387,6 +637,10 @@
       reticle.matrixAutoUpdate = false;
       reticle.visible = false;
       scene.add(reticle);
+      
+      log('Reticle created');
+    } catch (error) {
+      log(`ERROR creating reticle: ${error.message}`);
     }
 
     // Variables for AR hit testing
@@ -395,41 +649,75 @@
     let xrViewerPose = null;
     
     renderer.xr.addEventListener('sessionstart', async () => {
+      log('XR Session Started!');
+      
       const session = renderer.xr.getSession();
       
-      // Set up hit testing
-      const viewerSpace = await session.requestReferenceSpace('viewer');
-      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-      localSpace = await session.requestReferenceSpace('local');
+      try {
+        // Set up hit testing
+        const viewerSpace = await session.requestReferenceSpace('viewer');
+        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+        localSpace = await session.requestReferenceSpace('local');
+        
+        log('Hit testing initialized successfully');
+        
+        // Disable non-AR controls when in AR
+        controls.enabled = false;
+        
+        // Add event listener for select (trigger) input
+        session.addEventListener('select', onSelect);
+        log('XR select event listener added');
+      } catch (error) {
+        log(`ERROR during XR session setup: ${error.message}`);
+      }
       
-      // Disable non-AR controls when in AR
-      controls.enabled = false;
-      
-      // Add event listener for select (trigger) input
-      session.addEventListener('select', onSelect);
+      updateStateInfo();
     });
     
     renderer.xr.addEventListener('sessionend', () => {
+      log('XR Session Ended');
       hitTestSource = null;
       localSpace = null;
       controls.enabled = true;
       boardPlaced = false;
       boardGroup.userData.placed = false;
+      updateStateInfo();
     });
 
     // Function to handle XR select event (trigger press)
     function onSelect() {
+      log('XR Select Event Triggered');
+      
       if (reticle.visible && !boardPlaced) {
-        // Place the board at the hit test position
-        boardGroup.position.setFromMatrixPosition(reticle.matrix);
-        // Adjust the height to sit on the floor
-        boardGroup.position.y += boardHeight / 2;
-        boardGroup.userData.placed = true;
-        boardPlaced = true;
+        log('Placing board at hit test position');
         
-        // Start game automatically when board is placed
-        startGame();
+        try {
+          // Place the board at the hit test position
+          const matrix = new THREE.Matrix4();
+          matrix.fromArray(reticle.matrix.elements);
+          
+          const position = new THREE.Vector3();
+          position.setFromMatrixPosition(matrix);
+          
+          boardGroup.position.copy(position);
+          
+          // Adjust the height to sit on the floor
+          boardGroup.position.y += boardHeight / 2;
+          boardGroup.userData.placed = true;
+          boardPlaced = true;
+          
+          log(`Board placed at position: (${boardGroup.position.x.toFixed(2)}, ${boardGroup.position.y.toFixed(2)}, ${boardGroup.position.z.toFixed(2)})`);
+          
+          // Start game automatically when board is placed
+          startGame();
+        } catch (error) {
+          log(`ERROR placing board: ${error.message}`);
+        }
+      } else {
+        log(`Board placement failed: reticle visible: ${reticle.visible}, board already placed: ${boardPlaced}`);
       }
+      
+      updateStateInfo();
     }
 
     // --- Coordinate conversion ---
@@ -461,280 +749,68 @@
     
     // Render the locked cells from the board array
     function renderBoard3D() {
-      while(boardGroup.children.length > 1) { // Keep the outline
-        boardGroup.remove(boardGroup.children[1]);
-      }
+      // Keep track of objects before and after to detect rendering issues
+      const childrenBefore = boardGroup.children.length;
       
-      // Group cells by color for better performance
-      const colorGroups = {};
-      
-      for (let row = 0; row < ROWS; row++) {
-        for (let col = 0; col < COLS; col++) {
-          const colorValue = board[row][col];
-          if (colorValue) {
-            if (!colorGroups[colorValue]) {
-              colorGroups[colorValue] = [];
+      try {
+        // Remove all children except the first (the outline) and the second (ground plane)
+        while(boardGroup.children.length > 2) {
+          boardGroup.remove(boardGroup.children[2]);
+        }
+        
+        // Group cells by color for better performance
+        const colorGroups = {};
+        
+        for (let row = 0; row < ROWS; row++) {
+          for (let col = 0; col < COLS; col++) {
+            const colorValue = board[row][col];
+            if (colorValue) {
+              if (!colorGroups[colorValue]) {
+                colorGroups[colorValue] = [];
+              }
+              colorGroups[colorValue].push({ row, col });
             }
-            colorGroups[colorValue].push({ row, col });
           }
         }
-      }
-      
-      // Create instanced meshes for each color group
-      for (const colorValue in colorGroups) {
-        const cells = colorGroups[colorValue];
-        const { geometry, material } = createInstancedMesh(colorValue);
         
-        for (const cell of cells) {
-          const pos = boardToWorld(cell.row, cell.col);
-          const cube = new THREE.Mesh(geometry, material);
-          cube.position.copy(pos);
-          boardGroup.add(cube);
+        // Create instanced meshes for each color group
+        for (const colorValue in colorGroups) {
+          const cells = colorGroups[colorValue];
+          const { geometry, material } = createInstancedMesh(colorValue);
+          
+          for (const cell of cells) {
+            const pos = boardToWorld(cell.row, cell.col);
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.copy(pos);
+            boardGroup.add(cube);
+          }
         }
+        
+        const childrenAfter = boardGroup.children.length;
+        log(`Board rendered: ${childrenAfter - 2} blocks (from ${childrenBefore} to ${childrenAfter} objects)`);
+      } catch (error) {
+        log(`ERROR rendering board: ${error.message}`);
       }
     }
 
     // Render the current falling tetromino
     function renderActivePiece3D() {
-      while(activePieceGroup.children.length) {
-        activePieceGroup.remove(activePieceGroup.children[0]);
-      }
-      
-      if (!currentPiece) return;
-      
-      const { shape, position, color } = currentPiece;
-      const { geometry, material } = createInstancedMesh(color);
-      
-      // Position the active piece group at the board's position
-      activePieceGroup.position.copy(boardGroup.position);
-      
-      shape.forEach((rowArr, rowIndex) => {
-        rowArr.forEach((value, colIndex) => {
-          if (value) {
-            const boardRow = currentPiece.position.y + rowIndex;
-            const boardCol = currentPiece.position.x + colIndex;
-            const pos = boardToWorld(boardRow, boardCol);
-            const cube = new THREE.Mesh(geometry, material);
-            cube.position.copy(pos);
-            activePieceGroup.add(cube);
-          }
-        });
-      });
-    }
-
-    // Render the ghost piece (a transparent preview of where the piece will land)
-    function renderGhostPiece3D() {
-      while(ghostGroup.children.length) {
-        ghostGroup.remove(ghostGroup.children[0]);
-      }
-      
-      if (!currentPiece || !ghostEnabled) return;
-      
-      const ghostPos = getGhostPosition();
-      const { shape, color } = currentPiece;
-      
-      // Create a semi-transparent material for ghost piece
-      const geometry = new THREE.BoxGeometry(cellSize * 0.9, cellSize * 0.9, cellSize * 0.9);
-      const material = new THREE.MeshStandardMaterial({ 
-        color: color, 
-        transparent: true, 
-        opacity: 0.3,
-        wireframe: false
-      });
-      
-      // Position the ghost group at the board's position
-      ghostGroup.position.copy(boardGroup.position);
-      
-      shape.forEach((rowArr, rowIndex) => {
-        rowArr.forEach((value, colIndex) => {
-          if (value) {
-            const boardRow = ghostPos.y + rowIndex;
-            const boardCol = ghostPos.x + colIndex;
-            const pos = boardToWorld(boardRow, boardCol);
-            const cube = new THREE.Mesh(geometry, material);
-            cube.position.copy(pos);
-            ghostGroup.add(cube);
-          }
-        });
-      });
-    }
-
-    // Update all three groups based on current game state
-    function updateScene() {
-      renderBoard3D();
-      renderActivePiece3D();
-      renderGhostPiece3D();
-    }
-
-    // --- User input handling ---
-    function handleKeydown(event) {
-      if (isPaused || isGameOver) return;
-      switch(event.key) {
-        case 'ArrowLeft': movePiece(-1, 0); break;
-        case 'ArrowRight': movePiece(1, 0); break;
-        case 'ArrowDown': movePiece(0, 1); break;
-        case 'ArrowUp': rotatePiece(); break;
-        case ' ': case 'Spacebar': hardDrop(); break;
-      }
-    }
-    document.addEventListener('keydown', handleKeydown);
-    
-    // Add touch controls for Oculus controllers
-    moveLeftBtn.addEventListener('click', () => movePiece(-1, 0));
-    moveRightBtn.addEventListener('click', () => movePiece(1, 0));
-    moveDownBtn.addEventListener('click', () => movePiece(0, 1));
-    rotateBtn.addEventListener('click', rotatePiece);
-    hardDropBtn.addEventListener('click', hardDrop);
-
-    // --- Game control functions ---
-    function startGame() {
-      if (gameInterval) clearInterval(gameInterval);
-      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-      score = 0;
-      level = 1;
-      lines = 0;
-      dropSpeed = 1000;
-      isPaused = false;
-      isGameOver = false;
-      scoreElement.textContent = score;
-      levelElement.textContent = level;
-      linesElement.textContent = lines;
-      currentPiece = getRandomPiece();
-      nextPiece = getRandomPiece();
-      
-      // Set initial position for non-AR mode
-      if (!renderer.xr.isPresenting && !boardGroup.userData.placed) {
-        camera.position.set(0, 1, 2);
-        controls.update();
-        boardGroup.position.set(0, 0, -1);
-        boardGroup.userData.placed = true;
-      }
-      
-      updateScene();
-      gameInterval = setInterval(dropPiece, dropSpeed);
-    }
-    
-    startButton.addEventListener('click', startGame);
-    
-    pauseButton.addEventListener('click', () => {
-      if (isGameOver) return;
-      isPaused = !isPaused;
-      pauseButton.textContent = isPaused ? 'Resume' : 'Pause';
-      if (isPaused) {
-        clearInterval(gameInterval);
-        gameInterval = null;
-      } else {
-        gameInterval = setInterval(dropPiece, dropSpeed);
-      }
-    });
-    
-    restartButton.addEventListener('click', startGame);
-
-    function gameOver() {
-      isGameOver = true;
-      clearInterval(gameInterval);
-      gameInterval = null;
-      
-      // Create game over message in AR space
-      const gameOverText = document.createElement('div');
-      gameOverText.style.position = 'absolute';
-      gameOverText.style.top = '50%';
-      gameOverText.style.left = '50%';
-      gameOverText.style.transform = 'translate(-50%, -50%)';
-      gameOverText.style.color = 'white';
-      gameOverText.style.background = 'rgba(0,0,0,0.7)';
-      gameOverText.style.padding = '20px';
-      gameOverText.style.borderRadius = '10px';
-      gameOverText.style.fontSize = '24px';
-      gameOverText.style.textAlign = 'center';
-      gameOverText.style.zIndex = '1000';
-      gameOverText.innerHTML = `Game Over!<br>Final Score: ${score}<br><br>Tap Restart to play again`;
-      document.body.appendChild(gameOverText);
-      
-      setTimeout(() => {
-        document.body.removeChild(gameOverText);
-      }, 5000);
-    }
-
-    // For handling window resize
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
-
-    // Initial camera position for non-AR mode
-    camera.position.set(0, 1, 2);
-    controls.update();
-
-    // --- AR render loop ---
-    function animate(timestamp, frame) {
-      if (frame) {
-        const session = renderer.xr.getSession();
-        const pose = frame.getViewerPose(localSpace);
-        if (pose) {
-          xrViewerPose = pose;
+      try {
+        while(activePieceGroup.children.length) {
+          activePieceGroup.remove(activePieceGroup.children[0]);
         }
         
-        if (hitTestSource) {
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0 && !boardPlaced) {
-            const hit = hitTestResults[0];
-            const hitPose = hit.getPose(localSpace);
-            
-            reticle.visible = true;
-            reticle.matrix.fromArray(hitPose.transform.matrix);
-            
-            // Add a slight pulsing effect to the reticle
-            const pulseScale = 1 + 0.1 * Math.sin(Date.now() * 0.005);
-            const scaleMatrix = new THREE.Matrix4().makeScale(pulseScale, pulseScale, pulseScale);
-            reticle.matrix.multiply(scaleMatrix);
-          } else {
-            reticle.visible = false;
-          }
+        if (!currentPiece) {
+          log('No current piece to render');
+          return;
         }
         
-        // Handle controller input (if available)
-        session.inputSources.forEach(inputSource => {
-          if (inputSource.gamepad) {
-            const gamepad = inputSource.gamepad;
-            
-            // Check thumbstick/joystick for movement
-            if (gamepad.axes.length >= 2) {
-              const x = gamepad.axes[0];
-              const y = gamepad.axes[1];
-              
-              // Only respond to significant movement
-              if (Math.abs(x) > 0.5) {
-                if (x > 0.5 && !isPaused && Date.now() % 200 < 100) {
-                  movePiece(1, 0);
-                } else if (x < -0.5 && !isPaused && Date.now() % 200 < 100) {
-                  movePiece(-1, 0);
-                }
-              }
-              
-              if (y > 0.5 && !isPaused && Date.now() % 200 < 100) {
-                movePiece(0, 1);
-              }
-            }
-          }
-        });
-      } else {
-        // Update OrbitControls in non-XR mode
-        controls.update();
-      }
-      
-      renderer.render(scene, camera);
-    }
-    
-    renderer.setAnimationLoop(animate);
-    
-    // Initialize in non-AR mode
-    if (!boardGroup.userData.placed) {
-      boardGroup.position.set(0, 0, -1);
-      boardGroup.userData.placed = true;
-      updateScene();
-    }
-  </script>
-</body>
-</html>
+        const { shape, position, color } = currentPiece;
+        const { geometry, material } = createInstancedMesh(color);
+        
+        // Position the active piece group at the board's position
+        activePieceGroup.position.copy(boardGroup.position);
+        
+        let blocksAdded = 0;
+        
+        shape.forEach((rowArr, rowIndex) => {
