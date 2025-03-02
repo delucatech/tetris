@@ -441,6 +441,11 @@
       linesElement.textContent = lines;
       currentPiece = getRandomPiece();
       nextPiece = getRandomPiece();
+      // Fallback: if no AR hit test has yet placed the board, set a default position
+      if (!boardGroup.userData.placed) {
+        boardGroup.position.set(0, 0, -2);
+        boardGroup.userData.placed = true;
+      }
       updateScene();
       gameInterval = setInterval(dropPiece, dropSpeed);
     }
