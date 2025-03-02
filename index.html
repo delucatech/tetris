@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <title>AR Tetris on Oculus Quest 3</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <style>
     body { margin: 0; overflow: hidden; font-family: sans-serif; }
     
@@ -146,6 +148,19 @@
   <!-- Status indicator -->
   <div id="status-indicator" class="status-initializing">INITIALIZING...</div>
   
+  <!-- Quick action button for immediate non-AR play -->
+  <div id="quick-start" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+       background-color: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; 
+       text-align: center; color: white; z-index: 3000;">
+    <h2>AR Tetris</h2>
+    <p>Initialization taking too long?</p>
+    <button id="skip-ar-btn" style="background-color: #4CAF50; color: white; 
+           padding: 15px 30px; border: none; border-radius: 5px; font-size: 18px; 
+           margin-top: 15px; cursor: pointer;">
+      Play in Non-AR Mode
+    </button>
+  </div>
+  
   <!-- Permission request dialog -->
   <div id="permission-request">
     <h2>WebXR Permission Required</h2>
@@ -212,6 +227,8 @@
     const statusIndicator = document.getElementById('status-indicator');
     const permissionRequest = document.getElementById('permission-request');
     const xrPermissionBtn = document.getElementById('xr-permission-btn');
+    const quickStartPanel = document.getElementById('quick-start');
+    const skipARBtn = document.getElementById('skip-ar-btn');
     
     let logMessages = [];
     const MAX_LOG_MESSAGES = 30;
@@ -557,13 +574,23 @@
 
     // --- Game logic functions ---
     function getRandomPiece() {
-      const keys = Object.keys(SHAPES);
-      const type = keys[Math.floor(Math.random() * keys.length)];
-      // Deep-clone the shape and assign the appropriate color
-      const tetromino = JSON.parse(JSON.stringify(SHAPES[type]));
-      const pieceWidth = tetromino.shape[0].length;
-      tetromino.position = { x: Math.floor((COLS - pieceWidth) / 2), y: 0 };
-      return tetromino;
+      try {
+        const keys = Object.keys(SHAPES);
+        const type = keys[Math.floor(Math.random() * keys.length)];
+        // Deep-clone the shape and assign the appropriate color
+        const tetromino = JSON.parse(JSON.stringify(SHAPES[type]));
+        const pieceWidth = tetromino.shape[0].length;
+        tetromino.position = { x: Math.floor((COLS - pieceWidth) / 2), y: 0 };
+        return tetromino;
+      } catch (error) {
+        log(`ERROR generating piece: ${error.message}`);
+        // Return a simple fallback piece if something goes wrong
+        return {
+          shape: [[1,1], [1,1]],
+          color: 0xFFFF00,
+          position: { x: 4, y: 0 }
+        };
+      }
     }
 
     function isValidMove(piece, offsetX = 0, offsetY = 0) {
@@ -855,41 +882,98 @@
       setStatus('error', 'SETUP ERROR');
     }
     
+    // Quick start button (skip AR)
+    skipARBtn.addEventListener('click', () => {
+      log('User clicked Skip AR button');
+      quickStartPanel.style.display = 'none';
+      
+      // Force non-AR mode immediately
+      fallbackMode = true;
+      setStatus('ready', 'NON-AR MODE');
+      
+      if (boardGroup) {
+        boardGroup.position.set(0, 0, -1);
+        boardGroup.userData.placed = true;
+        boardPlaced = true;
+      }
+      
+      // Start the game
+      setTimeout(() => {
+        startGame();
+      }, 100);
+    });
+    
+    // Set a timeout to auto-hide the quick start panel if initialization succeeds
+    setTimeout(() => {
+      if (initStage === 'ready' || fallbackMode) {
+        quickStartPanel.style.display = 'none';
+      }
+    }, 10000);
+    
     // Check for WebXR support
     log('Checking WebXR support...');
-    if (navigator.xr) {
-      navigator.xr.isSessionSupported('immersive-ar')
-        .then(supported => {
-          log(`WebXR AR Support: ${supported ? 'YES' : 'NO'}`);
-          
-          if (supported) {
-            log('Adding AR button...');
-            addARButton();
-            setStatus('initializing', 'READY - TAP AR BUTTON');
-          } else {
-            log('AR not supported, entering fallback mode');
+    try {
+      if (navigator.xr) {
+        navigator.xr.isSessionSupported('immersive-ar')
+          .then(supported => {
+            log(`WebXR AR Support: ${supported ? 'YES' : 'NO'}`);
+            
+            // Hide quick start once we know AR status
+            setTimeout(() => {
+              quickStartPanel.style.display = 'none';
+            }, 2000);
+            
+            if (supported) {
+              log('Adding AR button...');
+              addARButton();
+              setStatus('initializing', 'READY - TAP AR BUTTON');
+            } else {
+              log('AR not supported, entering fallback mode');
+              fallbackMode = true;
+              setStatus('ready', 'FALLBACK MODE');
+              
+              // Set up for non-AR mode
+              boardGroup.position.set(0, 0, -1);
+              boardGroup.userData.placed = true;
+              boardPlaced = true;
+              updateScene();
+            }
+            
+            initStage = 'ready';
+            updateStateInfo();
+          })
+          .catch(err => {
+            log(`ERROR checking AR support: ${err.message}`);
             fallbackMode = true;
-            setStatus('ready', 'FALLBACK MODE');
+            setStatus('error', 'XR ERROR - FALLBACK MODE');
             
             // Set up for non-AR mode
             boardGroup.position.set(0, 0, -1);
             boardGroup.userData.placed = true;
             boardPlaced = true;
-            updateScene();
-          }
-          
-          initStage = 'ready';
-          updateStateInfo();
-        })
-        .catch(err => {
-          log(`ERROR checking AR support: ${err.message}`);
-          fallbackMode = true;
-          setStatus('error', 'XR ERROR - FALLBACK MODE');
-        });
-    } else {
-      log('WebXR API not available, entering fallback mode');
+          });
+      } else {
+        log('WebXR API not available, entering fallback mode');
+        fallbackMode = true;
+        setStatus('ready', 'FALLBACK MODE');
+        
+        // Hide quick start after 2 seconds
+        setTimeout(() => {
+          quickStartPanel.style.display = 'none';
+        }, 2000);
+        
+        // Set up for non-AR mode
+        if (boardGroup) {
+          boardGroup.position.set(0, 0, -1);
+          boardGroup.userData.placed = true;
+          boardPlaced = true;
+          updateScene();
+        }
+      }
+    } catch (error) {
+      log(`CRITICAL ERROR checking WebXR: ${error.message}`);
       fallbackMode = true;
-      setStatus('ready', 'FALLBACK MODE');
+      setStatus('error', 'CRITICAL ERROR - FALLBACK MODE');
       
       // Set up for non-AR mode
       if (boardGroup) {
@@ -1238,49 +1322,92 @@
 
     // --- Game control functions ---
     function startGame() {
-      log('Starting game...');
-      startButtonClicked = true;
-      
-      if (gameInterval) {
-        log('Clearing existing game interval');
-        clearInterval(gameInterval);
+      try {
+        log('Starting game...');
+        startButtonClicked = true;
+        
+        if (gameInterval) {
+          log('Clearing existing game interval');
+          clearInterval(gameInterval);
+        }
+        
+        board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+        score = 0;
+        level = 1;
+        lines = 0;
+        dropSpeed = 1000;
+        isPaused = false;
+        isGameOver = false;
+        
+        scoreElement.textContent = score;
+        levelElement.textContent = level;
+        linesElement.textContent = lines;
+        
+        // Hide quick start panel if it's still visible
+        if (quickStartPanel) {
+          quickStartPanel.style.display = 'none';
+        }
+        
+        log('Creating pieces');
+        currentPiece = getRandomPiece();
+        nextPiece = getRandomPiece();
+        
+        // Make sure the board is placed in non-AR mode
+        if ((!renderer.xr.isPresenting || fallbackMode) && 
+            (!boardGroup.userData.placed || !boardPlaced)) {
+          log('Setting up board for non-AR mode');
+          camera.position.set(0, 1, 2);
+          if (controls) controls.update();
+          boardGroup.position.set(0, 0, -1);
+          boardGroup.userData.placed = true;
+          boardPlaced = true;
+        }
+        
+        log('Updating scene');
+        updateScene();
+        
+        // Create a visible test cube to verify rendering is working
+        const testCube = new THREE.Mesh(
+          new THREE.BoxGeometry(0.1, 0.1, 0.1),
+          new THREE.MeshBasicMaterial({ color: 0xff0000 })
+        );
+        testCube.position.set(0, 0, -1);
+        scene.add(testCube);
+        log('Added test cube for visibility check');
+        
+        log('Starting game interval');
+        gameInterval = setInterval(dropPiece, dropSpeed);
+        
+        // Show a confirmation message
+        const startMessage = document.createElement('div');
+        startMessage.style.position = 'absolute';
+        startMessage.style.top = '50%';
+        startMessage.style.left = '50%';
+        startMessage.style.transform = 'translate(-50%, -50%)';
+        startMessage.style.background = 'rgba(0,0,0,0.7)';
+        startMessage.style.color = 'white';
+        startMessage.style.padding = '20px';
+        startMessage.style.borderRadius = '10px';
+        startMessage.style.fontSize = '24px';
+        startMessage.style.zIndex = '1000';
+        startMessage.innerHTML = 'Game Started!';
+        document.body.appendChild(startMessage);
+        
+        setTimeout(() => {
+          document.body.removeChild(startMessage);
+        }, 2000);
+        
+        log('Game started successfully');
+        setStatus('ready', 'GAME STARTED');
+        updateStateInfo();
+      } catch (error) {
+        log(`ERROR starting game: ${error.message}`);
+        console.error(error);
+        setStatus('error', 'START ERROR');
+        
+        // Show error to user
+        alert(`Error starting game: ${error.message}. Check debug panel for details.`);
       }
-      
-      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-      score = 0;
-      level = 1;
-      lines = 0;
-      dropSpeed = 1000;
-      isPaused = false;
-      isGameOver = false;
-      
-      scoreElement.textContent = score;
-      levelElement.textContent = level;
-      linesElement.textContent = lines;
-      
-      log('Creating pieces');
-      currentPiece = getRandomPiece();
-      nextPiece = getRandomPiece();
-      
-      // Set initial position for non-AR mode
-      if (!renderer.xr.isPresenting && !boardGroup.userData.placed) {
-        log('Setting up board for non-AR mode');
-        camera.position.set(0, 1, 2);
-        controls.update();
-        boardGroup.position.set(0, 0, -1);
-        boardGroup.userData.placed = true;
-        boardPlaced = true;
-      }
-      
-      log('Updating scene');
-      updateScene();
-      
-      log('Starting game interval');
-      gameInterval = setInterval(dropPiece, dropSpeed);
-      
-      log('Game started successfully');
-      setStatus('ready', 'GAME STARTED');
-      updateStateInfo();
     }
     
     startButton.addEventListener('click', () => {
