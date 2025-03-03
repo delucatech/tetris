@@ -213,12 +213,16 @@
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
-    // Board group holds all board-related objects so that falling pieces remain aligned
+    // Board group holds all board-related objects.
     const boardGroup = new THREE.Group();
     boardGroup.visible = false;
     scene.add(boardGroup);
 
-    // Active piece and ghost groups are now children of boardGroup
+    // New group for board cubes (placed pieces) to avoid removing dynamic groups.
+    const boardCubesGroup = new THREE.Group();
+    boardGroup.add(boardCubesGroup);
+
+    // Active piece and ghost groups are children of boardGroup.
     const activePieceGroup = new THREE.Group();
     boardGroup.add(activePieceGroup);
     const ghostGroup = new THREE.Group();
@@ -253,7 +257,7 @@
       localSpace = null;
     });
 
-    // Coordinate conversion (returns positions in boardGroup-local coordinates)
+    // Coordinate conversion (positions in boardGroup-local coordinates)
     function boardToWorld(row, col) {
       const x = (col - COLS/2) * cellSize + cellSize/2;
       const y = boardHeight - row * cellSize - cellSize;
@@ -261,11 +265,12 @@
       return new THREE.Vector3(x, y, z);
     }
 
-    // 3D rendering
+    // 3D rendering functions
+
+    // Render the board cubes (placed pieces) only in boardCubesGroup.
     function renderBoard3D() {
-      // Remove all board cubes except the nextPieceGroup and menuGroup
-      while(boardGroup.children.length > 3) {
-        boardGroup.remove(boardGroup.children[0]);
+      while(boardCubesGroup.children.length > 0) {
+        boardCubesGroup.remove(boardCubesGroup.children[0]);
       }
       for (let row = 0; row < ROWS; row++) {
         for (let col = 0; col < COLS; col++) {
@@ -275,7 +280,7 @@
             const material = new THREE.MeshStandardMaterial({ color: board[row][col] });
             const cube = new THREE.Mesh(geometry, material);
             cube.position.copy(pos);
-            boardGroup.add(cube);
+            boardCubesGroup.add(cube);
           }
         }
       }
@@ -464,13 +469,14 @@
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
 
-    // Create a visible ray (pointer) for the controller
+    // Create a visible ray (pointer) for the controller.
+    // Setting linewidth to 5 for a thicker line. (Note: linewidth is not supported on all platforms.)
     function createControllerLine() {
       const geometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
         new THREE.Vector3(0, 0, -1)
       ]);
-      const material = new THREE.LineBasicMaterial({ color: 0xffffff });
+      const material = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 5 });
       const line = new THREE.Line(geometry, material);
       line.scale.z = 10; // Extend the line
       return line;
@@ -519,7 +525,6 @@
 
     // Add XR controller select event for menu interactions using trigger (select event)
     function onSelect(event) {
-      // Cast a ray from the controller to detect menu buttons
       tempMatrix.identity().extractRotation(event.target.matrixWorld);
       raycaster.ray.origin.setFromMatrixPosition(event.target.matrixWorld);
       raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
@@ -585,26 +590,21 @@
         }
       }
 
-      // Use thumbstick input for gameplay actions (moving/rotating/dropping pieces)
+      // Use thumbstick input for gameplay actions
       if (session && boardPlaced) {
         for (const source of session.inputSources) {
           if (source.handedness === 'right' && source.gamepad) {
             const gamepad = source.gamepad;
-            const thumbstickX = gamepad.axes[2]; // Right thumbstick X-axis
-            const thumbstickY = gamepad.axes[3]; // Right thumbstick Y-axis
+            const thumbstickX = gamepad.axes[2];
+            const thumbstickY = gamepad.axes[3];
 
-            // Move left/right with thumbstick X-axis
             if (thumbstickX < -thumbstickThreshold && lastThumbstickX >= -thumbstickThreshold) movePiece(-1, 0);
             else if (thumbstickX > thumbstickThreshold && lastThumbstickX <= thumbstickThreshold) movePiece(1, 0);
-
-            // Move down faster with thumbstick Y-axis
             if (thumbstickY > thumbstickThreshold && lastThumbstickY <= thumbstickThreshold) movePiece(0, 1);
 
-            // Rotate with "A" button (while not interfering with board placement)
             const aButton = gamepad.buttons[4].pressed;
             if (aButton && !wasAPressed) rotatePiece();
 
-            // Hard drop with "B" button
             const bButton = gamepad.buttons[5].pressed;
             if (bButton) hardDrop();
 
@@ -618,6 +618,15 @@
       renderer.render(scene, camera);
     }
     renderer.setAnimationLoop(animate);
+
+    // PERFORMANCE NOTE:
+    // WebXR performance is influenced by device capability and scene complexity.
+    // For smoother graphics consider:
+    //   • Reusing geometries/materials (e.g. caching cube geometry)
+    //   • Using instanced meshes for repeated objects
+    //   • Minimizing frequent texture updates on the menu
+    //   • Profiling and optimizing draw calls
+    // These improvements can help reduce lag on less powerful hardware.
   </script>
 </body>
 </html>
