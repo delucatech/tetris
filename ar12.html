@@ -618,7 +618,7 @@
     boardGroup.add(menuGroup);
 
     // Position the menu plane at the same position as the group but with z offset
-    menuPlane.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0.1);
+    menuPlane.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0.1); // Increased zOffset to 0.1
 
     // Add menu plane directly to board group
     boardGroup.add(menuPlane);
@@ -626,26 +626,19 @@
     function updateMenuTexture() {
       menuCtx.clearRect(0, 0, menuCanvas.width, menuCanvas.height);
 
-      // Draw menu content directly on the canvas, shifted upwards
-      let startY = 20; // Adjusted startY to 20 (was 30) to move content up
+      // Draw menu content directly on the canvas
       menuCtx.font = '20px Arial';
       menuCtx.textAlign = 'left';
       menuCtx.textBaseline = 'top';
       menuCtx.fillStyle = 'white';
-      menuCtx.fillText(`Score: ${score}`, 30, startY);
-      startY += 40; // Increment startY for next line
-      menuCtx.fillText(`Level: ${level}`, 30, startY);
-      startY += 40; // Increment startY for next line
-      menuCtx.fillText(`Lines: ${lines}`, 30, startY);
-      startY = 140; // Adjusted startY for buttons to 140 (was 150) to move buttons up
-      const buttonVerticalSpacing = 60; // Keep button spacing consistent
+      menuCtx.fillText(`Score: ${score}`, 30, 30);
+      menuCtx.fillText(`Level: ${level}`, 30, 70);
+      menuCtx.fillText(`Lines: ${lines}`, 30, 110);
 
       const toggleText = !gameStarted ? 'Start' : (isPaused ? 'Resume' : 'Pause');
-      drawButton(menuCtx, buttonXCanvas, startY, buttonWidthCanvas, buttonHeightCanvas, toggleText);
-      startY += buttonVerticalSpacing; // Increment startY for next button
-      drawButton(menuCtx, buttonXCanvas, startY, buttonWidthCanvas, buttonHeightCanvas, 'Restart');
-      startY += buttonVerticalSpacing; // Increment startY for next button
-      drawButton(menuCtx, buttonXCanvas, startY, buttonWidthCanvas, buttonHeightCanvas, `Ghost: ${ghostEnabled ? 'On' : 'Off'}`);
+      drawButton(menuCtx, buttonXCanvas, 150, buttonWidthCanvas, buttonHeightCanvas, toggleText);
+      drawButton(menuCtx, buttonXCanvas, 210, buttonWidthCanvas, buttonHeightCanvas, 'Restart');
+      drawButton(menuCtx, buttonXCanvas, 270, buttonWidthCanvas, buttonHeightCanvas, `Ghost: ${ghostEnabled ? 'On' : 'Off'}`);
 
       if (isGameOver) {
         menuCtx.font = '24px Arial';
@@ -668,16 +661,9 @@
       return { planeX, planeY };
     }
 
-    // Recalculate button centers based on new vertical positions in updateMenuTexture
-    let buttonStartY = 140 + buttonHeightCanvas/2; // Adjusted button startY to 140
-    let buttonVerticalSpacingForCenters = 60; // Keep spacing consistent
-
-    let toggleCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, buttonStartY);
-    buttonStartY += buttonVerticalSpacingForCenters;
-    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, buttonStartY);
-    buttonStartY += buttonVerticalSpacingForCenters;
-    let ghostCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, buttonStartY);
-
+    let toggleCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
+    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 210 + buttonHeightCanvas/2);
+    let ghostCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 270 + buttonHeightCanvas/2);
 
     const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect * 0.75;
     const buttonPlaneHeight = (buttonHeightCanvas / buttonCanvasHeight) * menuAspect * 0.75;
@@ -691,8 +677,8 @@
     const toggleButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     toggleButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + toggleCenter.planeX,
-      boardHeight / 2 + toggleCenter.planeY, // Use recalculated toggleCenter.planeY
-      0.11
+      boardHeight / 2 + toggleCenter.planeY,
+      0.11 // Increased zOffset to 0.11
     );
     toggleButtonMesh.renderOrder = 3; // Ensure buttons are rendered on top of the menu plane
     boardGroup.add(toggleButtonMesh);
@@ -700,8 +686,8 @@
     const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     restartButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + restartCenter.planeX,
-      boardHeight / 2 + restartCenter.planeY, // Use recalculated restartCenter.planeY
-      0.11
+      boardHeight / 2 + restartCenter.planeY,
+      0.11 // Increased zOffset to 0.11
     );
     restartButtonMesh.renderOrder = 3; // Ensure buttons are rendered on top of the menu plane
     boardGroup.add(restartButtonMesh);
@@ -709,8 +695,8 @@
     const ghostButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     ghostButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + ghostCenter.planeX,
-      boardHeight / 2 + ghostCenter.planeY, // Use recalculated ghostCenter.planeY
-      0.11
+      boardHeight / 2 + ghostCenter.planeY,
+      0.11 // Increased zOffset to 0.11
     );
     ghostButtonMesh.renderOrder = 3; // Ensure buttons are rendered on top of the menu plane
     boardGroup.add(ghostButtonMesh);
@@ -932,14 +918,15 @@
             const line = controller.userData.pointerLine;
             const positions = line.geometry.attributes.position.array;
             positions[3] = 0;
-          positions[4] = 0;
-          positions[5] = -distance;
-          line.geometry.attributes.position.needsUpdate = true;
-          const circle = controller.userData.pointerCircle;
-          circle.position.set(0, 0, -distance);
-          circle.visible = true;
-          pointerGroup.visible = true;
-          return;
+            positions[4] = 0;
+            positions[5] = -distance;
+            line.geometry.attributes.position.needsUpdate = true;
+            const circle = controller.userData.pointerCircle;
+            circle.position.set(0, 0, -distance);
+            circle.visible = true;
+            pointerGroup.visible = true;
+            return;
+          }
         }
 
         pointerGroup.visible = false;
