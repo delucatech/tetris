@@ -618,7 +618,7 @@
     boardGroup.add(menuGroup);
 
     // Position the menu plane at the same position as the group but with z offset
-    menuPlane.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0.06);
+    menuPlane.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0.1); // Increased zOffset to 0.1
 
     // Add menu plane directly to board group
     boardGroup.add(menuPlane);
@@ -678,7 +678,7 @@
     toggleButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + toggleCenter.planeX,
       boardHeight / 2 + toggleCenter.planeY,
-      0.065
+      0.11 // Increased zOffset to 0.11
     );
     toggleButtonMesh.renderOrder = 3; // Ensure buttons are rendered on top of the menu plane
     boardGroup.add(toggleButtonMesh);
@@ -687,7 +687,7 @@
     restartButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + restartCenter.planeX,
       boardHeight / 2 + restartCenter.planeY,
-      0.065
+      0.11 // Increased zOffset to 0.11
     );
     restartButtonMesh.renderOrder = 3; // Ensure buttons are rendered on top of the menu plane
     boardGroup.add(restartButtonMesh);
@@ -696,7 +696,7 @@
     ghostButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + ghostCenter.planeX,
       boardHeight / 2 + ghostCenter.planeY,
-      0.065
+      0.11 // Increased zOffset to 0.11
     );
     ghostButtonMesh.renderOrder = 3; // Ensure buttons are rendered on top of the menu plane
     boardGroup.add(ghostButtonMesh);
