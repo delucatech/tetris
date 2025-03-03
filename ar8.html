@@ -407,12 +407,12 @@
     }
 
     // -----------------
-    // Next Piece Container – using a single mesh with no border
+    // Next Piece Container – simplified to only use a single backing box
     // -----------------
     const nextPieceGroup = new THREE.Group();
     
-    // Create a single box for the next piece
-    const nextPieceBoxGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.05);
+    // Create a single rounded, see‑through backing box.
+    const nextPieceBoxGeometry = createRoundedBox(0.5, 0.5, 0.05, 0.1);
     const nextPieceBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
     const nextPieceBox = new THREE.Mesh(nextPieceBoxGeometry, nextPieceBoxMaterial);
     
@@ -428,7 +428,7 @@
     boardGroup.add(nextPieceContainer);
 
     // -----------------
-    // In‑game Menu – using a single mesh with direct text rendering
+    // In‑game Menu – simplified to use a single backing box
     // -----------------
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
@@ -458,7 +458,7 @@
       ctx.fillText(text, x + width/2, y + height/2);
     }
 
-    // Create menu canvas
+    // Create menu canvas directly
     const buttonCanvasWidth = 220, buttonCanvasHeight = 320;
     const buttonXCanvas = 20;
     const buttonWidthCanvas = 180;
@@ -472,26 +472,28 @@
     const menuTexture = new THREE.CanvasTexture(menuCanvas);
     const menuAspect = buttonCanvasWidth / buttonCanvasHeight;
     
-    // Create a single menu box with the texture applied
-    const menuGeometry = new THREE.BoxGeometry(menuAspect * 0.8, 0.8, 0.04);
-    const menuMaterial = new THREE.MeshBasicMaterial({ 
-      map: menuTexture,
-      color: 0x1c1c1e, 
-      transparent: true, 
-      opacity: 0.9
-    });
-    const menuBox = new THREE.Mesh(menuGeometry, menuMaterial);
+    // Create a single rounded box for the menu
+    const menuBoxGeometry = createRoundedBox(menuAspect * 0.8, 0.8, 0.05, 0.1);
+    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.8 });
+    const menuBox = new THREE.Mesh(menuBoxGeometry, menuBoxMaterial);
+    
+    // Create the plane for menu text and buttons
+    const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect * 0.75, 0.75);
+    const menuPlaneMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
+    const menuPlane = new THREE.Mesh(menuPlaneGeometry, menuPlaneMaterial);
+    menuPlane.position.set(0, 0, 0.03);
+    menuPlane.renderOrder = 1;
     
     const menuGroup = new THREE.Group();
     menuGroup.add(menuBox);
+    menuGroup.add(menuPlane);
     
-    // Position the menu on the left
+    // Position the menu on the left, ensuring it doesn't overlap the playable area
     menuGroup.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0);
     boardGroup.add(menuGroup);
 
     function updateMenuTexture() {
-      menuCtx.fillStyle = '#1c1c1e';
-      menuCtx.fillRect(0, 0, menuCanvas.width, menuCanvas.height);
+      menuCtx.clearRect(0, 0, menuCanvas.width, menuCanvas.height);
       
       // Draw menu content directly on the canvas
       menuCtx.font = '20px Arial';
@@ -523,8 +525,8 @@
     // Invisible Button Meshes for Menu Interaction
     // -----------------
     function canvasToPlane(x, y) {
-      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect * 0.8;
-      const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5) * 0.8;
+      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect * 0.75;
+      const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5) * 0.75;
       return { planeX, planeY };
     }
     
@@ -532,8 +534,8 @@
     let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 210 + buttonHeightCanvas/2);
     let ghostCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 270 + buttonHeightCanvas/2);
     
-    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect * 0.8;
-    const buttonPlaneHeight = (buttonHeightCanvas / buttonCanvasHeight) * 0.8;
+    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect * 0.75;
+    const buttonPlaneHeight = (buttonHeightCanvas / buttonCanvasHeight) * 0.75;
     
     const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
     buttonMaterial.colorWrite = false;
@@ -541,17 +543,17 @@
     const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
     
     const toggleButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    toggleButtonMesh.position.set(toggleCenter.planeX, toggleCenter.planeY, 0.021);
+    toggleButtonMesh.position.set(toggleCenter.planeX, toggleCenter.planeY, 0.035);
     toggleButtonMesh.renderOrder = -1;
     menuGroup.add(toggleButtonMesh);
     
     const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, 0.021);
+    restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, 0.035);
     restartButtonMesh.renderOrder = -1;
     menuGroup.add(restartButtonMesh);
     
     const ghostButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    ghostButtonMesh.position.set(ghostCenter.planeX, ghostCenter.planeY, 0.021);
+    ghostButtonMesh.position.set(ghostCenter.planeX, ghostCenter.planeY, 0.035);
     ghostButtonMesh.renderOrder = -1;
     menuGroup.add(ghostButtonMesh);
     
@@ -738,7 +740,7 @@
         raycaster.set(rayOrigin, rayDirection);
         
         // Check intersections with menu elements first
-        const menuIntersects = raycaster.intersectObject(menuBox);
+        const menuIntersects = raycaster.intersectObject(menuPlane);
         if (menuIntersects.length > 0) {
           const intersect = menuIntersects[0];
           const distance = intersect.distance;
