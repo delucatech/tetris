@@ -35,7 +35,7 @@
     let lastThumbstickX = 0;
     let lastThumbstickY = 0;
     let thumbstickThreshold = 0.5;
-    // For continuous down movement
+    // For continuous down movement:
     let lastDownTimestamp = 0;
     const downRepeatDelay = 150; // in ms
 
@@ -221,7 +221,7 @@
     boardGroup.visible = false;
     scene.add(boardGroup);
 
-    // New group for board cubes (placed pieces) to avoid removing dynamic groups.
+    // New group for board cubes (placed pieces)
     const boardCubesGroup = new THREE.Group();
     boardGroup.add(boardCubesGroup);
 
@@ -269,7 +269,6 @@
     }
 
     // 3D rendering functions
-
     function renderBoard3D() {
       while(boardCubesGroup.children.length > 0) {
         boardCubesGroup.remove(boardCubesGroup.children[0]);
@@ -368,11 +367,12 @@
       renderNextPiece3D();
     }
 
-    // Menu setup
+    // ----------------------
+    // Menu Setup
+    // ----------------------
     const menuGroup = new THREE.Group();
     boardGroup.add(menuGroup);
     // Position the menu relative to the boardGroup.
-    // (Its placement relative to boardGroup is maintained; the boardGroup will be rotated to face the camera.)
     menuGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
 
     // Helper for drawing rounded rectangles
@@ -390,7 +390,7 @@
       ctx.closePath();
     }
 
-    // Improved drawButton with centered text
+    // Draws a button with centered text.
     function drawButton(ctx, x, y, width, height, text) {
       const gradient = ctx.createLinearGradient(x, y, x, y + height);
       gradient.addColorStop(0, '#555');
@@ -405,12 +405,13 @@
       ctx.fillText(text, x + width/2, y + height/2);
     }
 
-    // Create menu texture using a canvas sized exactly to fit the content.
+    // Create menu texture using a canvas.
     function createMenuTexture() {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
       canvas.height = 370;
       const ctx = canvas.getContext('2d');
+      // (Do not flip the drawing here—the texture will use its default flipY=true.)
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
       roundedRect(ctx, 10, 10, 236, 350, 20);
       ctx.fill();
@@ -429,10 +430,9 @@
     }
 
     const menuTexture = new THREE.CanvasTexture(createMenuTexture());
-    // Set the texture to not flip so the drawn coordinates match our expectations.
-    menuTexture.flipY = false;
+    // Use the default flipY (true) so the texture is automatically flipped.
     const menuMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
-    // The menu plane geometry is sized to the same aspect ratio as the canvas.
+    // The menu plane geometry is sized to match the canvas aspect ratio.
     const menuAspect = 256 / 370;
     const menuGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuMesh = new THREE.Mesh(menuGeometry, menuMaterial);
@@ -459,19 +459,21 @@
       menuTexture.needsUpdate = true;
     }
 
-    // Button meshes for visual feedback and raycasting.
-    // Convert canvas button coordinates to menu plane coordinates.
-    // Canvas: width=256, height=370. Plane: width=menuAspect, height=1.
-    // Mapping: planeX = (canvasX/256 - 0.5)*menuAspect, planeY = (0.5 - canvasY/370)
-    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5 });
+    // ----------------------
+    // Button Meshes for Raycasting (invisible)
+    // ----------------------
+    // Canvas size
     const buttonCanvasWidth = 256, buttonCanvasHeight = 370;
+    // Button drawn positions & sizes (from canvas)
     const buttonXCanvas = 30;
     const buttonWidthCanvas = 196; // 256 - 2*30 = 196
     const buttonHeightCanvas = 40;
 
+    // Convert canvas coordinates to plane coordinates.
+    // With texture flipY=true, the y coordinate mapping is inverted.
     function canvasToPlane(x, y) {
       const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect;
-      const planeY = 0.5 - y / buttonCanvasHeight;
+      const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5);
       return { planeX, planeY };
     }
     // Calculate centers for each button.
@@ -483,8 +485,13 @@
     let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 250 + buttonHeightCanvas/2);
 
     // Button dimensions in plane coordinates.
-    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect; // approx 0.5297
-    const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight; // approx 0.1081
+    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect;
+    const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight;
+
+    // Create invisible button meshes (for raycasting)
+    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
+    // Prevent writing color so they remain invisible.
+    buttonMaterial.colorWrite = false;
 
     const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
     const startButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
@@ -515,7 +522,7 @@
       return line;
     }
 
-    // Allow keyboard controls for testing
+    // Allow keyboard controls for testing.
     function handleKeydown(event) {
       if (isPaused || isGameOver) return;
       switch(event.key) {
@@ -556,7 +563,7 @@
       alert("Game Over! Final Score: " + score);
     }
 
-    // Add XR controller select event for menu interactions using trigger (select event)
+    // XR controller select event for menu interactions using trigger.
     function onSelect(event) {
       tempMatrix.identity().extractRotation(event.target.matrixWorld);
       raycaster.ray.origin.setFromMatrixPosition(event.target.matrixWorld);
@@ -580,7 +587,7 @@
       }
     }
 
-    // Setup controllers with a visible pointer line
+    // Setup controllers with a visible pointer line.
     const controller1 = renderer.xr.getController(0);
     controller1.add(createControllerLine());
     controller1.addEventListener('select', onSelect);
@@ -591,7 +598,7 @@
     controller2.addEventListener('select', onSelect);
     scene.add(controller2);
 
-    // AR render loop
+    // AR render loop.
     function animate(timestamp, frame) {
       const session = renderer.xr.getSession();
       if (hitTestSource && frame) {
@@ -610,7 +617,7 @@
                 const isAPressed = gamepad.buttons[4].pressed; // "A" button for board placement
                 if (isAPressed && !wasAPressed && !boardPlaced) {
                   boardGroup.position.setFromMatrixPosition(reticle.matrix);
-                  // Rotate boardGroup so that its front faces the camera
+                  // Rotate boardGroup so its front faces the camera.
                   const camPos = new THREE.Vector3();
                   camera.getWorldPosition(camPos);
                   boardGroup.lookAt(new THREE.Vector3(camPos.x, boardGroup.position.y, camPos.z));
@@ -627,7 +634,7 @@
         }
       }
 
-      // Use thumbstick input for gameplay actions
+      // Use thumbstick input for gameplay actions.
       if (session && boardPlaced) {
         for (const source of session.inputSources) {
           if (source.handedness === 'right' && source.gamepad) {
@@ -668,12 +675,8 @@
     renderer.setAnimationLoop(animate);
 
     // PERFORMANCE NOTE:
-    // WebXR performance is influenced by device capability and scene complexity.
-    // For smoother graphics consider:
-    //   • Reusing geometries/materials
-    //   • Using instanced meshes for repeated objects
-    //   • Minimizing frequent texture updates on the menu
-    //   • Profiling and optimizing draw calls
+    // For smoother AR performance consider reusing geometries/materials,
+    // using instanced meshes, and minimizing frequent texture updates.
   </script>
 </body>
 </html>
