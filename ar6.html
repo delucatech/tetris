@@ -296,7 +296,7 @@
     // (No playable area background)
 
     // -----------------
-    // Next Piece Container – build as a group with a rounded backing and a front canvas plane.
+    // Next Piece Container – build as a group with a rounded, see‑through backing and a front canvas plane.
     // -----------------
     const nextPieceGroup = new THREE.Group();
     function createNextPieceContainerTexture() {
@@ -304,8 +304,8 @@
       canvas.width = 128;
       canvas.height = 128;
       const ctx = canvas.getContext('2d');
-      // Use same container color as menu (#1c1c1e) with transparency.
-      ctx.fillStyle = 'rgba(28,28,30,0.8)';
+      // Use same container color as menu (#1c1c1e) with lower opacity.
+      ctx.fillStyle = 'rgba(28,28,30,0.6)';
       roundedRect(ctx, 5, 5, 118, 118, 10);
       ctx.fill();
       return canvas;
@@ -315,23 +315,24 @@
     const nextPiecePlaneGeometry = new THREE.PlaneGeometry(0.5, 0.5);
     const nextPiecePlaneMaterial = new THREE.MeshBasicMaterial({ map: nextPieceContainerTexture, transparent: true });
     const nextPiecePlane = new THREE.Mesh(nextPiecePlaneGeometry, nextPiecePlaneMaterial);
-    // Create a rounded backing box.
+    // Create a rounded, see‑through backing box.
     const nextPieceBoxGeometry = createRoundedBox(0.5, 0.5, 0.05, 0.1);
-    const nextPieceBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e });
+    const nextPieceBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
     const nextPieceBox = new THREE.Mesh(nextPieceBoxGeometry, nextPieceBoxMaterial);
     const nextPieceContainer = new THREE.Group();
     nextPieceContainer.add(nextPieceBox);
-    nextPiecePlane.position.set(0, 0, 0.03);
+    // Move the front canvas plane forward so it appears on top.
+    nextPiecePlane.position.set(0, 0, 0.1);
     nextPieceContainer.add(nextPiecePlane);
     // The next piece preview group (rendered above the container) is offset.
-    nextPieceGroup.position.set(0, 0, 0.1);
+    nextPieceGroup.position.set(0, 0, 0.15);
     nextPieceContainer.add(nextPieceGroup);
     // Position container on the right.
     nextPieceContainer.position.set((COLS/2 + 3) * cellSize, boardHeight / 2, 0);
     boardGroup.add(nextPieceContainer);
 
     // -----------------
-    // In‑game Menu – build as a group with a rounded backing and a front canvas plane.
+    // In‑game Menu – build as a group with a rounded, see‑through backing and a front canvas plane.
     // -----------------
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
@@ -366,8 +367,8 @@
       canvas.width = 256;
       canvas.height = 420;
       const ctx = canvas.getContext('2d');
-      // Use same container color as menu.
-      ctx.fillStyle = 'rgba(28,28,30,0.8)';
+      // Use same container color as menu with lower opacity.
+      ctx.fillStyle = 'rgba(28,28,30,0.6)';
       roundedRect(ctx, 10, 10, 236, 400, 20);
       ctx.fill();
       ctx.font = '24px Arial';
@@ -397,14 +398,16 @@
     const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuPlaneMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
     const menuPlane = new THREE.Mesh(menuPlaneGeometry, menuPlaneMaterial);
+    // Ensure the canvas plane renders on top.
     menuPlane.renderOrder = 1;
-    // Create a rounded backing box for the menu.
+    // Create a rounded, see‑through backing box for the menu.
     const menuBoxGeometry = createRoundedBox(menuAspect, 1, 0.05, 0.1);
-    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e });
+    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
     const menuBox = new THREE.Mesh(menuBoxGeometry, menuBoxMaterial);
     const menuGroup = new THREE.Group();
     menuGroup.add(menuBox);
-    menuPlane.position.set(0, 0, 0.03);
+    // Move the menu canvas forward so buttons and text are clearly visible.
+    menuPlane.position.set(0, 0, 0.1);
     menuGroup.add(menuPlane);
     // Position the menu on the left.
     menuGroup.position.set(- (COLS/2 + 3) * cellSize, boardHeight / 2, 0);
@@ -414,7 +417,7 @@
       const canvas = menuTexture.image;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(28,28,30,0.8)';
+      ctx.fillStyle = 'rgba(28,28,30,0.6)';
       roundedRect(ctx, 10, 10, 236, 400, 20);
       ctx.fill();
       ctx.font = '24px Arial';
