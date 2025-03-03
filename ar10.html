@@ -502,7 +502,7 @@
     boardGroup.add(menuGroup);
 
     // Position the menu plane at the same position as the group but with z offset
-    menuPlane.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0.1); // Increased zOffset to 0.1
+    menuPlane.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0.06); // Increased zOffset to 0.06
 
     // Add menu plane directly to board group
     boardGroup.add(menuPlane);
@@ -562,7 +562,7 @@
     toggleButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + toggleCenter.planeX,
       boardHeight / 2 + toggleCenter.planeY,
-      0.11 // Increased zOffset to 0.11
+      0.065 // Increased zOffset to 0.065
     );
     toggleButtonMesh.renderOrder = 2;
     boardGroup.add(toggleButtonMesh);
@@ -571,7 +571,7 @@
     restartButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + restartCenter.planeX,
       boardHeight / 2 + restartCenter.planeY,
-      0.11 // Increased zOffset to 0.11
+      0.065 // Increased zOffset to 0.065
     );
     restartButtonMesh.renderOrder = 2;
     boardGroup.add(restartButtonMesh);
@@ -580,7 +580,7 @@
     ghostButtonMesh.position.set(
       -(COLS/2 + 2.5) * cellSize + ghostCenter.planeX,
       boardHeight / 2 + ghostCenter.planeY,
-      0.11 // Increased zOffset to 0.11
+      0.065 // Increased zOffset to 0.065
     );
     ghostButtonMesh.renderOrder = 2;
     boardGroup.add(ghostButtonMesh);
@@ -732,7 +732,7 @@
       nextPieceGroup.position.set(
         (COLS/2 + 2.5) * cellSize, // Same X position as container
         boardHeight / 2,           // Same Y position as container
-        0.06                       // But in front on Z-axis, increased to 0.06 (already was 0.06 in last version, keeping it)
+        0.06                       // But in front on Z-axis, increased to 0.06
       );
 
       shape.forEach((rowArr, rowIndex) => {
@@ -801,15 +801,16 @@
             const distance = intersect.distance;
             const line = controller.userData.pointerLine;
             const positions = line.geometry.attributes.position.array;
-          positions[3] = 0;
-          positions[4] = 0;
-          positions[5] = -distance;
-          line.geometry.attributes.position.needsUpdate = true;
-          const circle = controller.userData.pointerCircle;
-          circle.position.set(0, 0, -distance);
-          circle.visible = true;
-          pointerGroup.visible = true;
-          return;
+            positions[3] = 0;
+            positions[4] = 0;
+            positions[5] = -distance;
+            line.geometry.attributes.position.needsUpdate = true;
+            const circle = controller.userData.pointerCircle;
+            circle.position.set(0, 0, -distance);
+            circle.visible = true;
+            pointerGroup.visible = true;
+            return;
+          }
         }
 
         pointerGroup.visible = false;
