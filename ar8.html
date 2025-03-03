@@ -407,43 +407,28 @@
     }
 
     // -----------------
-    // Next Piece Container – build as a group with a rounded, see‑through backing and a front canvas plane.
+    // Next Piece Container – simplified to only use a single backing box
     // -----------------
     const nextPieceGroup = new THREE.Group();
-    function createNextPieceContainerTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 128;
-      canvas.height = 128;
-      const ctx = canvas.getContext('2d');
-      // Use same container color as menu (#1c1c1e) with lower opacity.
-      ctx.fillStyle = 'rgba(28,28,30,0.6)';
-      roundedRect(ctx, 5, 5, 118, 118, 10);
-      ctx.fill();
-      return canvas;
-    }
-    const nextPieceContainerTexture = new THREE.CanvasTexture(createNextPieceContainerTexture());
-    // Front plane for next piece container.
-    const nextPiecePlaneGeometry = new THREE.PlaneGeometry(0.5, 0.5);
-    const nextPiecePlaneMaterial = new THREE.MeshBasicMaterial({ map: nextPieceContainerTexture, transparent: true });
-    const nextPiecePlane = new THREE.Mesh(nextPiecePlaneGeometry, nextPiecePlaneMaterial);
-    // Create a rounded, see‑through backing box.
+    
+    // Create a single rounded, see‑through backing box.
     const nextPieceBoxGeometry = createRoundedBox(0.5, 0.5, 0.05, 0.1);
     const nextPieceBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
     const nextPieceBox = new THREE.Mesh(nextPieceBoxGeometry, nextPieceBoxMaterial);
+    
     const nextPieceContainer = new THREE.Group();
     nextPieceContainer.add(nextPieceBox);
-    // Move the front canvas plane forward so it appears on top.
-    nextPiecePlane.position.set(0, 0, 0.1);
-    nextPieceContainer.add(nextPiecePlane);
-    // The next piece preview group (rendered above the container) is offset.
-    nextPieceGroup.position.set(0, 0, 0.15);
+    
+    // The next piece preview group is positioned in the center of the box
+    nextPieceGroup.position.set(0, 0, 0.03);
     nextPieceContainer.add(nextPieceGroup);
-    // Position container on the right.
-    nextPieceContainer.position.set((COLS/2 + 3) * cellSize, boardHeight / 2, 0);
+    
+    // Position container on the right, ensuring it doesn't overlap with the playable area
+    nextPieceContainer.position.set((COLS/2 + 2.5) * cellSize, boardHeight / 2, 0);
     boardGroup.add(nextPieceContainer);
 
     // -----------------
-    // In‑game Menu – build as a group with a rounded, see‑through backing and a front canvas plane.
+    // In‑game Menu – simplified to use a single backing box
     // -----------------
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
@@ -473,83 +458,66 @@
       ctx.fillText(text, x + width/2, y + height/2);
     }
 
-    function createMenuTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 420;
-      const ctx = canvas.getContext('2d');
-      // Use same container color as menu with lower opacity.
-      ctx.fillStyle = 'rgba(28,28,30,0.6)';
-      roundedRect(ctx, 10, 10, 236, 400, 20);
-      ctx.fill();
-      ctx.font = '24px Arial';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = 'white';
-      ctx.fillText(`Score: ${score}`, 30, 30);
-      ctx.fillText(`Level: ${level}`, 30, 70);
-      ctx.fillText(`Lines: ${lines}`, 30, 110);
-      const toggleText = !gameStarted ? 'Start' : (isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 150, 196, 40, toggleText);
-      drawButton(ctx, 30, 210, 196, 40, 'Restart');
-      drawButton(ctx, 30, 270, 196, 40, `Ghost: ${ghostEnabled ? 'On' : 'Off'}`);
-      if (isGameOver) {
-        ctx.font = '30px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'red';
-        ctx.fillText("Game Over", canvas.width/2, canvas.height/2 - 20);
-        ctx.fillStyle = 'white';
-        ctx.fillText("Final Score: " + score, canvas.width/2, canvas.height/2 + 20);
-      }
-      return canvas;
-    }
-
-    const menuTexture = new THREE.CanvasTexture(createMenuTexture());
-    const menuAspect = 256 / 420;
-    const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect, 1);
+    // Create menu canvas directly
+    const buttonCanvasWidth = 220, buttonCanvasHeight = 320;
+    const buttonXCanvas = 20;
+    const buttonWidthCanvas = 180;
+    const buttonHeightCanvas = 40;
+    
+    const menuCanvas = document.createElement('canvas');
+    menuCanvas.width = buttonCanvasWidth;
+    menuCanvas.height = buttonCanvasHeight;
+    const menuCtx = menuCanvas.getContext('2d');
+    
+    const menuTexture = new THREE.CanvasTexture(menuCanvas);
+    const menuAspect = buttonCanvasWidth / buttonCanvasHeight;
+    
+    // Create a single rounded box for the menu
+    const menuBoxGeometry = createRoundedBox(menuAspect * 0.8, 0.8, 0.05, 0.1);
+    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.8 });
+    const menuBox = new THREE.Mesh(menuBoxGeometry, menuBoxMaterial);
+    
+    // Create the plane for menu text and buttons
+    const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect * 0.75, 0.75);
     const menuPlaneMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
     const menuPlane = new THREE.Mesh(menuPlaneGeometry, menuPlaneMaterial);
-    // Ensure the canvas plane renders on top.
+    menuPlane.position.set(0, 0, 0.03);
     menuPlane.renderOrder = 1;
-    // Create a rounded, see‑through backing box for the menu.
-    const menuBoxGeometry = createRoundedBox(menuAspect, 1, 0.05, 0.1);
-    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
-    const menuBox = new THREE.Mesh(menuBoxGeometry, menuBoxMaterial);
+    
     const menuGroup = new THREE.Group();
     menuGroup.add(menuBox);
-    // Move the menu canvas forward so buttons and text are clearly visible.
-    menuPlane.position.set(0, 0, 0.1);
     menuGroup.add(menuPlane);
-    // Position the menu on the left.
-    menuGroup.position.set(- (COLS/2 + 3) * cellSize, boardHeight / 2, 0);
+    
+    // Position the menu on the left, ensuring it doesn't overlap the playable area
+    menuGroup.position.set(-(COLS/2 + 2.5) * cellSize, boardHeight / 2, 0);
     boardGroup.add(menuGroup);
 
     function updateMenuTexture() {
-      const canvas = menuTexture.image;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(28,28,30,0.6)';
-      roundedRect(ctx, 10, 10, 236, 400, 20);
-      ctx.fill();
-      ctx.font = '24px Arial';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = 'white';
-      ctx.fillText(`Score: ${score}`, 30, 30);
-      ctx.fillText(`Level: ${level}`, 30, 70);
-      ctx.fillText(`Lines: ${lines}`, 30, 110);
+      menuCtx.clearRect(0, 0, menuCanvas.width, menuCanvas.height);
+      
+      // Draw menu content directly on the canvas
+      menuCtx.font = '20px Arial';
+      menuCtx.textAlign = 'left';
+      menuCtx.textBaseline = 'top';
+      menuCtx.fillStyle = 'white';
+      menuCtx.fillText(`Score: ${score}`, 30, 30);
+      menuCtx.fillText(`Level: ${level}`, 30, 70);
+      menuCtx.fillText(`Lines: ${lines}`, 30, 110);
+      
       const toggleText = !gameStarted ? 'Start' : (isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 150, 196, 40, toggleText);
-      drawButton(ctx, 30, 210, 196, 40, 'Restart');
-      drawButton(ctx, 30, 270, 196, 40, `Ghost: ${ghostEnabled ? 'On' : 'Off'}`);
+      drawButton(menuCtx, buttonXCanvas, 150, buttonWidthCanvas, buttonHeightCanvas, toggleText);
+      drawButton(menuCtx, buttonXCanvas, 210, buttonWidthCanvas, buttonHeightCanvas, 'Restart');
+      drawButton(menuCtx, buttonXCanvas, 270, buttonWidthCanvas, buttonHeightCanvas, `Ghost: ${ghostEnabled ? 'On' : 'Off'}`);
+      
       if (isGameOver) {
-        ctx.font = '30px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'red';
-        ctx.fillText("Game Over", canvas.width/2, canvas.height/2 - 20);
-        ctx.fillStyle = 'white';
-        ctx.fillText("Final Score: " + score, canvas.width/2, canvas.height/2 + 20);
+        menuCtx.font = '24px Arial';
+        menuCtx.textAlign = 'center';
+        menuCtx.fillStyle = 'red';
+        menuCtx.fillText("Game Over", menuCanvas.width/2, menuCanvas.height/2 - 20);
+        menuCtx.fillStyle = 'white';
+        menuCtx.fillText("Final Score: " + score, menuCanvas.width/2, menuCanvas.height/2 + 20);
       }
+      
       menuTexture.needsUpdate = true;
     }
 
