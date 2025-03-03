@@ -9,7 +9,8 @@
     /* AR Experience Start Overlay */
     #startOverlay {
       position: fixed;
-      top: 0; left: 0;
+      top: 0;
+      left: 0;
       width: 100vw;
       height: 100vh;
       background: rgba(0,0,0,0.8);
@@ -56,11 +57,21 @@
 
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/ARButton.js';
 
-    // Hide the overlay when the user clicks the Start Experience button.
+    // When the user clicks "Start Experience", hide the overlay and start the XR session.
     document.getElementById('startExperience').addEventListener('click', () => {
       document.getElementById('startOverlay').style.display = 'none';
+      if (navigator.xr) {
+        navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] })
+          .then(session => {
+            renderer.xr.setSession(session);
+          })
+          .catch(err => {
+            console.error("Failed to start XR session:", err);
+          });
+      } else {
+        alert("WebXR not available");
+      }
     });
 
     // ----------------------
@@ -124,19 +135,146 @@
       return tetromino;
     }
 
-    // (Additional game functions: isValidMove, movePiece, rotatePiece, hardDrop, lockPiece, checkLines, dropPiece, getGhostPosition)
-    // ... [game logic remains unchanged] ...
+    // ----------------------
+    // Game Logic Functions
+    // ----------------------
+    function isValidMove(piece, offsetX = 0, offsetY = 0) {
+      const { shape, position } = piece;
+      for (let row = 0; row < shape.length; row++) {
+        for (let col = 0; col < shape[row].length; col++) {
+          if (shape[row][col]) {
+            const boardRow = position.y + row + offsetY;
+            const boardCol = position.x + col + offsetX;
+            if (boardCol < 0 || boardCol >= COLS || boardRow >= ROWS) return false;
+            if (boardRow >= 0 && board[boardRow][boardCol]) return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function movePiece(offsetX, offsetY) {
+      if (!currentPiece || isPaused || isGameOver) return false;
+      if (isValidMove(currentPiece, offsetX, offsetY)) {
+        currentPiece.position.x += offsetX;
+        currentPiece.position.y += offsetY;
+        updateScene();
+        return true;
+      }
+      return false;
+    }
+
+    function rotatePiece() {
+      if (!currentPiece || isPaused || isGameOver) return;
+      const rotatedShape = [];
+      for (let col = 0; col < currentPiece.shape[0].length; col++) {
+        const newRow = [];
+        for (let row = currentPiece.shape.length - 1; row >= 0; row--) {
+          newRow.push(currentPiece.shape[row][col]);
+        }
+        rotatedShape.push(newRow);
+      }
+      const originalShape = currentPiece.shape;
+      const originalPosition = { ...currentPiece.position };
+      currentPiece.shape = rotatedShape;
+      if (isValidMove(currentPiece)) {
+        updateScene();
+        return;
+      }
+      currentPiece.position.x += 1;
+      if (isValidMove(currentPiece)) {
+        updateScene();
+        return;
+      }
+      currentPiece.position.x = originalPosition.x - 1;
+      if (isValidMove(currentPiece)) {
+        updateScene();
+        return;
+      }
+      currentPiece.shape = originalShape;
+      currentPiece.position = originalPosition;
+    }
+
+    function hardDrop() {
+      if (!currentPiece || isPaused || isGameOver) return;
+      let dropDistance = 0;
+      while (isValidMove(currentPiece, 0, dropDistance + 1)) {
+        dropDistance++;
+      }
+      if (dropDistance > 0) {
+        currentPiece.position.y += dropDistance;
+        updateScene();
+        lockPiece();
+      }
+    }
+
+    function lockPiece() {
+      const { shape, position, color } = currentPiece;
+      shape.forEach((row, rowIndex) => {
+        row.forEach((value, colIndex) => {
+          if (value) {
+            const boardRow = position.y + rowIndex;
+            const boardCol = position.x + colIndex;
+            if (boardRow >= 0 && boardRow < ROWS && boardCol >= 0 && boardCol < COLS) {
+              board[boardRow][boardCol] = color;
+            }
+          }
+        });
+      });
+      checkLines();
+      currentPiece = nextPiece;
+      nextPiece = getRandomPiece();
+      updateScene();
+      if (!isValidMove(currentPiece)) gameOver();
+    }
+
+    function checkLines() {
+      let linesCleared = 0;
+      for (let row = ROWS - 1; row >= 0; row--) {
+        if (board[row].every(cell => cell !== 0)) {
+          board.splice(row, 1);
+          board.unshift(Array(COLS).fill(0));
+          linesCleared++;
+          row++;
+        }
+      }
+      if (linesCleared > 0) {
+        const pointValues = [0, 100, 300, 500, 800];
+        score += pointValues[linesCleared] * level;
+        lines += linesCleared;
+        level = Math.floor(lines / 10) + 1;
+        dropSpeed = Math.max(100, 1000 - (level - 1) * 100);
+        updateMenuTexture();
+        if (gameInterval) {
+          clearInterval(gameInterval);
+          gameInterval = setInterval(dropPiece, dropSpeed);
+        }
+      }
+    }
+
+    function dropPiece() {
+      if (!currentPiece || isPaused || isGameOver) return;
+      if (!movePiece(0, 1)) lockPiece();
+    }
+
+    function getGhostPosition() {
+      if (!currentPiece) return null;
+      let ghost = JSON.parse(JSON.stringify(currentPiece));
+      while (isValidMove(ghost, 0, 1)) {
+        ghost.position.y += 1;
+      }
+      return ghost.position;
+    }
 
     // ----------------------
     // Three.js AR Setup
     // ----------------------
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
-    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
 
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
@@ -146,7 +284,7 @@
     boardGroup.visible = false;
     scene.add(boardGroup);
 
-    // Group for board cubes (placed pieces)
+    // Group for board cubes (placed pieces).
     const boardCubesGroup = new THREE.Group();
     boardGroup.add(boardCubesGroup);
 
@@ -156,15 +294,15 @@
     const ghostGroup = new THREE.Group();
     boardGroup.add(ghostGroup);
 
-    // Next piece group is positioned on the right.
+    // Next piece group positioned on the right.
     const nextPieceGroup = new THREE.Group();
     boardGroup.add(nextPieceGroup);
-    nextPieceGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
+    nextPieceGroup.position.set((COLS / 2 + 2) * cellSize, boardHeight / 2, 0);
 
-    // Menu group (score and controls) is positioned on the left.
+    // Menu group (score and controls) positioned on the left.
     const menuGroup = new THREE.Group();
     boardGroup.add(menuGroup);
-    menuGroup.position.set(-((COLS/2 + 2) * cellSize), boardHeight / 2, 0);
+    menuGroup.position.set(-((COLS / 2 + 2) * cellSize), boardHeight / 2, 0);
 
     // ----------------------
     // Menu Canvas Drawing Functions
@@ -194,7 +332,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'white';
-      ctx.fillText(text, x + width/2, y + height/2);
+      ctx.fillText(text, x + width / 2, y + height / 2);
     }
 
     function createMenuTexture() {
@@ -259,9 +397,9 @@
       const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5);
       return { planeX, planeY };
     }
-    let startCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
-    let pauseCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 200 + buttonHeightCanvas/2);
-    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 250 + buttonHeightCanvas/2);
+    let startCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas / 2, 150 + buttonHeightCanvas / 2);
+    let pauseCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas / 2, 200 + buttonHeightCanvas / 2);
+    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas / 2, 250 + buttonHeightCanvas / 2);
     const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect;
     const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight;
     const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
@@ -294,7 +432,7 @@
     // Allow keyboard controls for testing.
     function handleKeydown(event) {
       if (isPaused || isGameOver) return;
-      switch(event.key) {
+      switch (event.key) {
         case 'ArrowLeft': movePiece(-1, 0); break;
         case 'ArrowRight': movePiece(1, 0); break;
         case 'ArrowDown': movePiece(0, 1); break;
@@ -389,14 +527,14 @@
     });
 
     function boardToWorld(row, col) {
-      const x = (col - COLS/2) * cellSize + cellSize/2;
+      const x = (col - COLS / 2) * cellSize + cellSize / 2;
       const y = boardHeight - row * cellSize - cellSize;
       const z = 0;
       return new THREE.Vector3(x, y, z);
     }
 
     function renderBoard3D() {
-      while(boardCubesGroup.children.length > 0) {
+      while (boardCubesGroup.children.length > 0) {
         boardCubesGroup.remove(boardCubesGroup.children[0]);
       }
       for (let row = 0; row < ROWS; row++) {
@@ -414,7 +552,7 @@
     }
 
     function renderActivePiece3D() {
-      while(activePieceGroup.children.length) {
+      while (activePieceGroup.children.length) {
         activePieceGroup.remove(activePieceGroup.children[0]);
       }
       if (!currentPiece) return;
@@ -436,7 +574,7 @@
     }
 
     function renderGhostPiece3D() {
-      while(ghostGroup.children.length) {
+      while (ghostGroup.children.length) {
         ghostGroup.remove(ghostGroup.children[0]);
       }
       if (!currentPiece || !ghostEnabled) return;
@@ -459,7 +597,7 @@
     }
 
     function renderNextPiece3D() {
-      while(nextPieceGroup.children.length) {
+      while (nextPieceGroup.children.length) {
         nextPieceGroup.remove(nextPieceGroup.children[0]);
       }
       if (!nextPiece) return;
