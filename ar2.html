@@ -6,11 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
     body { margin: 0; overflow: hidden; }
-    /* AR Experience Start Overlay */
+    /* Start AR Experience Overlay */
     #startOverlay {
       position: fixed;
-      top: 0;
-      left: 0;
+      top: 0; left: 0;
       width: 100vw;
       height: 100vh;
       background: rgba(0,0,0,0.8);
@@ -44,6 +43,34 @@
     .menu-container button:hover {
       background: #005bb5;
     }
+    /* Game Over Overlay */
+    #gameOverOverlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #gameOverOverlay button {
+      background: #007aff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 20px;
+      font-size: 1.25rem;
+      color: white;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    #gameOverOverlay button:hover {
+      background: #005bb5;
+    }
   </style>
 </head>
 <body>
@@ -54,30 +81,14 @@
       <button id="startExperience">Start Experience</button>
     </div>
   </div>
-
+  <!-- Game Over Overlay -->
+  <div id="gameOverOverlay">
+    <div>Game Over! Final Score: <span id="finalScore"></span></div>
+    <button id="restartGame">Restart</button>
+  </div>
+  
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-
-    // When the user clicks "Start Experience", hide the overlay,
-    // check for AR support, and request an immersive‑AR session.
-    document.getElementById('startExperience').addEventListener('click', async () => {
-      document.getElementById('startOverlay').style.display = 'none';
-      if (navigator.xr) {
-        try {
-          const supported = await navigator.xr.isSessionSupported('immersive-ar');
-          if (!supported) {
-            alert("Immersive AR is not supported on this device.");
-            return;
-          }
-          const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
-          renderer.xr.setSession(session);
-        } catch (err) {
-          console.error("Failed to start XR session:", err);
-        }
-      } else {
-        alert("WebXR not available");
-      }
-    });
 
     // ----------------------
     // Game Configuration & State
@@ -103,6 +114,12 @@
     let thumbstickThreshold = 0.5;
     let lastDownTimestamp = 0;
     const downRepeatDelay = 150;
+
+    // For keyboard continuous movement
+    let keysPressed = {};
+    let lastLeftTimestamp = 0;
+    let lastRightTimestamp = 0;
+    const horizontalRepeatDelay = 150;
 
     // Tetromino definitions
     const THEMES = {
@@ -140,9 +157,6 @@
       return tetromino;
     }
 
-    // ----------------------
-    // Game Logic Functions
-    // ----------------------
     function isValidMove(piece, offsetX = 0, offsetY = 0) {
       const { shape, position } = piece;
       for (let row = 0; row < shape.length; row++) {
@@ -281,6 +295,17 @@
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
 
+    // Start AR session when the user clicks "Start Experience"
+    document.getElementById('startExperience').addEventListener('click', async () => {
+      document.getElementById('startOverlay').style.display = 'none';
+      try {
+        const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
+        renderer.xr.setSession(session);
+      } catch (e) {
+        console.error("Failed to start AR session", e);
+      }
+    });
+
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
@@ -289,7 +314,7 @@
     boardGroup.visible = false;
     scene.add(boardGroup);
 
-    // Group for board cubes (placed pieces).
+    // Group for board cubes (placed pieces)
     const boardCubesGroup = new THREE.Group();
     boardGroup.add(boardCubesGroup);
 
@@ -299,12 +324,12 @@
     const ghostGroup = new THREE.Group();
     boardGroup.add(ghostGroup);
 
-    // Next piece group positioned on the right.
+    // Next piece group is positioned on the right.
     const nextPieceGroup = new THREE.Group();
     boardGroup.add(nextPieceGroup);
     nextPieceGroup.position.set((COLS / 2 + 2) * cellSize, boardHeight / 2, 0);
 
-    // Menu group (score and controls) positioned on the left.
+    // Menu group (score and controls) is positioned on the left.
     const menuGroup = new THREE.Group();
     boardGroup.add(menuGroup);
     menuGroup.position.set(-((COLS / 2 + 2) * cellSize), boardHeight / 2, 0);
@@ -434,45 +459,19 @@
       return line;
     }
 
-    // Allow keyboard controls for testing.
-    function handleKeydown(event) {
-      if (isPaused || isGameOver) return;
-      switch (event.key) {
-        case 'ArrowLeft': movePiece(-1, 0); break;
-        case 'ArrowRight': movePiece(1, 0); break;
-        case 'ArrowDown': movePiece(0, 1); break;
-        case 'ArrowUp': rotatePiece(); break;
-        case ' ': case 'Spacebar': hardDrop(); break;
+    // Keyboard event listeners for continuous movement and immediate actions
+    document.addEventListener('keydown', (event) => {
+      keysPressed[event.key] = true;
+      if (event.key === 'ArrowUp') {
+        rotatePiece();
       }
-    }
-    document.addEventListener('keydown', handleKeydown);
-
-    function startGame() {
-      if (!boardPlaced) {
-        alert("Please place the board first by aiming at a surface and pressing the 'A' button on the Oculus controller.");
-        return;
+      if (event.key === ' ' || event.key === 'Spacebar') {
+        hardDrop();
       }
-      if (gameInterval) clearInterval(gameInterval);
-      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
-      score = 0;
-      level = 1;
-      lines = 0;
-      dropSpeed = 1000;
-      isPaused = false;
-      isGameOver = false;
-      updateMenuTexture();
-      currentPiece = getRandomPiece();
-      nextPiece = getRandomPiece();
-      updateScene();
-      gameInterval = setInterval(dropPiece, dropSpeed);
-    }
-
-    function gameOver() {
-      isGameOver = true;
-      clearInterval(gameInterval);
-      gameInterval = null;
-      alert("Game Over! Final Score: " + score);
-    }
+    });
+    document.addEventListener('keyup', (event) => {
+      keysPressed[event.key] = false;
+    });
 
     // XR controller select event for menu interactions.
     function onSelect(event) {
@@ -636,6 +635,39 @@
       renderNextPiece3D();
     }
 
+    function startGame() {
+      if (!boardPlaced) {
+        alert("Please place the board first by aiming at a surface and pressing the 'A' button on the Oculus controller.");
+        return;
+      }
+      if (gameInterval) clearInterval(gameInterval);
+      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+      score = 0;
+      level = 1;
+      lines = 0;
+      dropSpeed = 1000;
+      isPaused = false;
+      isGameOver = false;
+      updateMenuTexture();
+      currentPiece = getRandomPiece();
+      nextPiece = getRandomPiece();
+      updateScene();
+      gameInterval = setInterval(dropPiece, dropSpeed);
+    }
+
+    function gameOver() {
+      isGameOver = true;
+      clearInterval(gameInterval);
+      gameInterval = null;
+      document.getElementById('finalScore').textContent = score;
+      document.getElementById('gameOverOverlay').style.display = 'flex';
+    }
+
+    document.getElementById('restartGame').addEventListener('click', () => {
+      document.getElementById('gameOverOverlay').style.display = 'none';
+      startGame();
+    });
+
     function animate(timestamp, frame) {
       const session = renderer.xr.getSession();
       if (hitTestSource && frame) {
@@ -696,6 +728,15 @@
             lastThumbstickY = thumbstickY;
             wasAPressed = aButton;
           }
+        }
+        // Keyboard continuous movement for left/right
+        if (keysPressed['ArrowLeft'] && timestamp - lastLeftTimestamp > horizontalRepeatDelay) {
+          movePiece(-1, 0);
+          lastLeftTimestamp = timestamp;
+        }
+        if (keysPressed['ArrowRight'] && timestamp - lastRightTimestamp > horizontalRepeatDelay) {
+          movePiece(1, 0);
+          lastRightTimestamp = timestamp;
         }
       }
       renderer.render(scene, camera);
