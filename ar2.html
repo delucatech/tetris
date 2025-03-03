@@ -58,17 +58,22 @@
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
 
-    // When the user clicks "Start Experience", hide the overlay and start the XR session.
-    document.getElementById('startExperience').addEventListener('click', () => {
+    // When the user clicks "Start Experience", hide the overlay,
+    // check for AR support, and request an immersive‑AR session.
+    document.getElementById('startExperience').addEventListener('click', async () => {
       document.getElementById('startOverlay').style.display = 'none';
       if (navigator.xr) {
-        navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] })
-          .then(session => {
-            renderer.xr.setSession(session);
-          })
-          .catch(err => {
-            console.error("Failed to start XR session:", err);
-          });
+        try {
+          const supported = await navigator.xr.isSessionSupported('immersive-ar');
+          if (!supported) {
+            alert("Immersive AR is not supported on this device.");
+            return;
+          }
+          const session = await navigator.xr.requestSession('immersive-ar', { requiredFeatures: ['hit-test'] });
+          renderer.xr.setSession(session);
+        } catch (err) {
+          console.error("Failed to start XR session:", err);
+        }
       } else {
         alert("WebXR not available");
       }
