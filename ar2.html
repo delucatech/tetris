@@ -28,22 +28,6 @@
       color: white;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-    #menuContainer h1 {
-      margin-bottom: 20px;
-      font-size: 2rem;
-    }
-    #menuContainer button {
-      background: #007aff;
-      border: none;
-      border-radius: 10px;
-      padding: 12px 24px;
-      font-size: 1.2rem;
-      color: white;
-      cursor: pointer;
-    }
-    #menuContainer button:hover {
-      background: #005bb5;
-    }
   </style>
 </head>
 <body>
@@ -88,6 +72,9 @@
     let lastRightTimestamp = 0;
     const horizontalRepeatDelay = 150; // in ms
 
+    // New state flag to determine if game has started.
+    let gameStarted = false;
+
     // Tetromino definitions
     const THEMES = {
       classic: {
@@ -115,7 +102,7 @@
     }
     let SHAPES = getShapesWithThemeColors();
 
-    // Game logic
+    // Game logic functions…
     function getRandomPiece() {
       const keys = Object.keys(SHAPES);
       const type = keys[Math.floor(Math.random() * keys.length)];
@@ -253,7 +240,7 @@
       return ghost.position;
     }
 
-    // Three.js AR setup
+    // --- Three.js AR setup ---
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -269,7 +256,7 @@
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
-    // Board group holds all board-related objects.
+    // Board group holds all board‐related objects.
     const boardGroup = new THREE.Group();
     boardGroup.visible = false;
     scene.add(boardGroup);
@@ -284,17 +271,42 @@
     const ghostGroup = new THREE.Group();
     boardGroup.add(ghostGroup);
 
-    // Next piece group positioned on the right side.
+    // --- Next Piece Container ---
+    // Remove direct addition of nextPieceGroup to boardGroup.
     const nextPieceGroup = new THREE.Group();
-    boardGroup.add(nextPieceGroup);
-    nextPieceGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
+    // Create a container for next piece with a canvas texture.
+    function createNextPieceContainerTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      // Draw background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      roundedRect(ctx, 5, 5, 118, 118, 10);
+      ctx.fill();
+      // Draw subtle border
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 2;
+      roundedRect(ctx, 5, 5, 118, 118, 10);
+      ctx.stroke();
+      return canvas;
+    }
+    const nextPieceContainerTexture = new THREE.CanvasTexture(createNextPieceContainerTexture());
+    const nextPieceContainerGeometry = new THREE.PlaneGeometry(1, 1);
+    const nextPieceContainerMaterial = new THREE.MeshBasicMaterial({ map: nextPieceContainerTexture, transparent: true });
+    const nextPieceContainerMesh = new THREE.Mesh(nextPieceContainerGeometry, nextPieceContainerMaterial);
+    // Create a container group and add both the container mesh and nextPieceGroup.
+    const nextPieceContainer = new THREE.Group();
+    nextPieceContainer.add(nextPieceContainerMesh);
+    // Center the nextPieceGroup inside the container.
+    nextPieceGroup.position.set(0, 0, 0.01);
+    nextPieceContainer.add(nextPieceGroup);
+    // Position container further to the right.
+    nextPieceContainer.position.set((COLS/2 + 3) * cellSize, boardHeight / 2, 0);
+    boardGroup.add(nextPieceContainer);
 
-    // In‑game menu group positioned on the left side.
-    const menuGroup = new THREE.Group();
-    boardGroup.add(menuGroup);
-    menuGroup.position.set(- (COLS/2 + 2) * cellSize, boardHeight / 2, 0);
-
-    // Helper for drawing rounded rectangles
+    // --- In‑game Menu ---
+    // Create menu texture using a canvas.
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
       ctx.moveTo(x + radius, y);
@@ -324,7 +336,6 @@
       ctx.fillText(text, x + width/2, y + height/2);
     }
 
-    // Create menu texture using a canvas.
     function createMenuTexture() {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
@@ -340,10 +351,11 @@
       ctx.fillText(`Score: ${score}`, 30, 30);
       ctx.fillText(`Level: ${level}`, 30, 70);
       ctx.fillText(`Lines: ${lines}`, 30, 110);
-      drawButton(ctx, 30, 150, 196, 40, 'Start');
-      drawButton(ctx, 30, 200, 196, 40, isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 250, 196, 40, 'Restart');
-      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 300);
+      // Toggle button: shows "Start" if game not started, then "Pause" (or "Resume" when paused)
+      const toggleText = !gameStarted ? 'Start' : (isPaused ? 'Resume' : 'Pause');
+      drawButton(ctx, 30, 150, 196, 40, toggleText);
+      drawButton(ctx, 30, 210, 196, 40, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 270);
       return canvas;
     }
 
@@ -352,6 +364,11 @@
     const menuGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
     const menuMesh = new THREE.Mesh(menuGeometry, menuMaterial);
+
+    // In‑game menu group positioned further left.
+    const menuGroup = new THREE.Group();
+    boardGroup.add(menuGroup);
+    menuGroup.position.set(- (COLS/2 + 3) * cellSize, boardHeight / 2, 0);
     menuGroup.add(menuMesh);
 
     function updateMenuTexture() {
@@ -368,10 +385,10 @@
       ctx.fillText(`Score: ${score}`, 30, 30);
       ctx.fillText(`Level: ${level}`, 30, 70);
       ctx.fillText(`Lines: ${lines}`, 30, 110);
-      drawButton(ctx, 30, 150, 196, 40, 'Start');
-      drawButton(ctx, 30, 200, 196, 40, isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 250, 196, 40, 'Restart');
-      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 300);
+      const toggleText = !gameStarted ? 'Start' : (isPaused ? 'Resume' : 'Pause');
+      drawButton(ctx, 30, 150, 196, 40, toggleText);
+      drawButton(ctx, 30, 210, 196, 40, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 270);
       menuTexture.needsUpdate = true;
     }
 
@@ -388,9 +405,9 @@
       const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5);
       return { planeX, planeY };
     }
-    let startCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
-    let pauseCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 200 + buttonHeightCanvas/2);
-    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 250 + buttonHeightCanvas/2);
+    // Create two buttons: one for toggle (start/pause/resume) and one for restart.
+    let toggleCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
+    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 210 + buttonHeightCanvas/2);
 
     const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect;
     const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight;
@@ -399,19 +416,15 @@
     buttonMaterial.colorWrite = false;
 
     const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
-    const startButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    startButtonMesh.position.set(startCenter.planeX, startCenter.planeY, 0.01);
-    menuGroup.add(startButtonMesh);
-
-    const pauseButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    pauseButtonMesh.position.set(pauseCenter.planeX, pauseCenter.planeY, 0.01);
-    menuGroup.add(pauseButtonMesh);
+    const toggleButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    toggleButtonMesh.position.set(toggleCenter.planeX, toggleCenter.planeY, 0.01);
+    menuGroup.add(toggleButtonMesh);
 
     const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, 0.01);
     menuGroup.add(restartButtonMesh);
 
-    const buttonMeshes = [startButtonMesh, pauseButtonMesh, restartButtonMesh];
+    const buttonMeshes = [toggleButtonMesh, restartButtonMesh];
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
 
@@ -451,6 +464,7 @@
       dropSpeed = 1000;
       isPaused = false;
       isGameOver = false;
+      gameStarted = true;
       updateMenuTexture();
       currentPiece = getRandomPiece();
       nextPiece = getRandomPiece();
@@ -472,16 +486,19 @@
       const intersects = raycaster.intersectObjects(buttonMeshes);
       if (intersects.length > 0) {
         const button = intersects[0].object;
-        if (button === startButtonMesh) {
-          startGame();
-        } else if (button === pauseButtonMesh && !isGameOver) {
-          isPaused = !isPaused;
-          if (isPaused) {
-            clearInterval(gameInterval);
-          } else {
-            gameInterval = setInterval(dropPiece, dropSpeed);
+        if (button === toggleButtonMesh) {
+          // If game hasn't started, start it. Otherwise toggle pause.
+          if (!gameStarted) {
+            startGame();
+          } else if (!isGameOver) {
+            isPaused = !isPaused;
+            if (isPaused) {
+              clearInterval(gameInterval);
+            } else {
+              gameInterval = setInterval(dropPiece, dropSpeed);
+            }
+            updateMenuTexture();
           }
-          updateMenuTexture();
         } else if (button === restartButtonMesh) {
           startGame();
         }
@@ -626,6 +643,25 @@
       renderGhostPiece3D();
       renderNextPiece3D();
     }
+
+    // --- Add a subtle border around the playable area ---
+    function createBoardBorder() {
+      const left = - (COLS/2) * cellSize;
+      const right = (COLS/2) * cellSize;
+      const top = boardHeight - cellSize/2;
+      const bottom = - cellSize/2;
+      const borderGeometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(left, top, 0.05),
+        new THREE.Vector3(right, top, 0.05),
+        new THREE.Vector3(right, bottom, 0.05),
+        new THREE.Vector3(left, bottom, 0.05),
+        new THREE.Vector3(left, top, 0.05)
+      ]);
+      const borderMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+      const borderLine = new THREE.Line(borderGeometry, borderMaterial);
+      boardGroup.add(borderLine);
+    }
+    createBoardBorder();
 
     function animate(timestamp, frame) {
       const session = renderer.xr.getSession();
