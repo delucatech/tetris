@@ -5,7 +5,35 @@
   <title>AR Tetris on Oculus Quest 3</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <style>
-    body { margin: 0; overflow: hidden; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
+    #menu {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.8);
+      padding: 20px;
+      border-radius: 20px;
+      text-align: center;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    #menu h1 {
+      margin-bottom: 20px;
+    }
+    #menu button {
+      padding: 10px 20px;
+      font-size: 18px;
+      background: #007aff;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -35,14 +63,8 @@
     let lastThumbstickX = 0;
     let lastThumbstickY = 0;
     let thumbstickThreshold = 0.5;
-    let downHeld = false;
-    let leftHeld = false;
-    let rightHeld = false;
-    let lastDownTime = 0;
-    let lastLeftTime = 0;
-    let lastRightTime = 0;
-    const downInterval = 50; // ms
-    const moveInterval = 100; // ms
+    let lastDownTimestamp = 0;
+    const downRepeatDelay = 150; // in ms
 
     // Tetromino definitions
     const THEMES = {
@@ -216,27 +238,34 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
     document.body.appendChild(renderer.domElement);
-    document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+
+    // Create custom AR start menu
+    const menuDiv = document.createElement('div');
+    menuDiv.id = 'menu';
+    const title = document.createElement('h1');
+    title.textContent = 'Tetris AR';
+    menuDiv.appendChild(title);
+    const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+    arButton.textContent = 'Play Tetris AR';
+    menuDiv.appendChild(arButton);
+    document.body.appendChild(menuDiv);
 
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
-    // Board group holds all board-related objects.
+    // Board group holds all board-related objects
     const boardGroup = new THREE.Group();
     boardGroup.visible = false;
     scene.add(boardGroup);
 
-    // New group for board cubes (placed pieces) to avoid removing dynamic groups.
     const boardCubesGroup = new THREE.Group();
     boardGroup.add(boardCubesGroup);
 
-    // Active piece and ghost groups are children of boardGroup.
     const activePieceGroup = new THREE.Group();
     boardGroup.add(activePieceGroup);
     const ghostGroup = new THREE.Group();
     boardGroup.add(ghostGroup);
 
-    // Next piece group remains inside boardGroup (positioned on the side)
     const nextPieceGroup = new THREE.Group();
     boardGroup.add(nextPieceGroup);
     nextPieceGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
@@ -265,7 +294,7 @@
       localSpace = null;
     });
 
-    // Coordinate conversion (positions in boardGroup-local coordinates)
+    // Coordinate conversion
     function boardToWorld(row, col) {
       const x = (col - COLS/2) * cellSize + cellSize/2;
       const y = boardHeight - row * cellSize - cellSize;
@@ -372,12 +401,11 @@
       renderNextPiece3D();
     }
 
-    // Menu setup
+    // Menu Setup
     const menuGroup = new THREE.Group();
     boardGroup.add(menuGroup);
     menuGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
 
-    // Helper for drawing rounded rectangles
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
       ctx.moveTo(x + radius, y);
@@ -397,9 +425,9 @@
       gradient.addColorStop(0, '#555');
       gradient.addColorStop(1, '#333');
       ctx.fillStyle = gradient;
-      roundedRect(ctx, x, y, width, height, 10);
+      roundedRect(ctx, x, y, width, height, 20);
       ctx.fill();
-      ctx.font = '24px Arial';
+      ctx.font = '48px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = 'white';
@@ -409,31 +437,31 @@
     function createMenuTexture() {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
-      canvas.height = 512;
+      canvas.height = 740;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      roundedRect(ctx, 10, 10, 492, 492, 20);
+      roundedRect(ctx, 20, 20, 472, 700, 40);
       ctx.fill();
-      ctx.font = '24px Arial';
+      ctx.font = '48px Arial';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillStyle = 'white';
-      ctx.fillText(`Score: ${score}`, 30, 50);
-      ctx.fillText(`Level: ${level}`, 30, 90);
-      ctx.fillText(`Lines: ${lines}`, 30, 130);
-      drawButton(ctx, 30, 160, 100, 40, 'Start');
-      drawButton(ctx, 30, 210, 100, 40, isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 260, 100, 40, 'Restart');
-      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 310);
+      ctx.fillText(`Score: ${score}`, 60, 60);
+      ctx.fillText(`Level: ${level}`, 60, 140);
+      ctx.fillText(`Lines: ${lines}`, 60, 220);
+      drawButton(ctx, 60, 300, 392, 80, 'Start');
+      drawButton(ctx, 60, 400, 392, 80, isPaused ? 'Resume' : 'Pause');
+      drawButton(ctx, 60, 500, 392, 80, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 60, 600);
       return canvas;
     }
 
     const menuTexture = new THREE.CanvasTexture(createMenuTexture());
     const menuMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
-    const menuWidth = 0.4;
-    const menuHeight = 0.4;
-    const menuGeometry = new THREE.PlaneGeometry(menuWidth, menuHeight);
+    const menuAspect = 512 / 740;
+    const menuGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuMesh = new THREE.Mesh(menuGeometry, menuMaterial);
+    menuMesh.position.z = 0.01; // Move menu in front of next piece
     menuGroup.add(menuMesh);
 
     function updateMenuTexture() {
@@ -441,54 +469,60 @@
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      roundedRect(ctx, 10, 10, 492, 492, 20);
+      roundedRect(ctx, 20, 20, 472, 700, 40);
       ctx.fill();
-      ctx.font = '24px Arial';
+      ctx.font = '48px Arial';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillStyle = 'white';
-      ctx.fillText(`Score: ${score}`, 30, 50);
-      ctx.fillText(`Level: ${level}`, 30, 90);
-      ctx.fillText(`Lines: ${lines}`, 30, 130);
-      drawButton(ctx, 30, 160, 100, 40, 'Start');
-      drawButton(ctx, 30, 210, 100, 40, isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 260, 100, 40, 'Restart');
-      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 310);
+      ctx.fillText(`Score: ${score}`, 60, 60);
+      ctx.fillText(`Level: ${level}`, 60, 140);
+      ctx.fillText(`Lines: ${lines}`, 60, 220);
+      drawButton(ctx, 60, 300, 392, 80, 'Start');
+      drawButton(ctx, 60, 400, 392, 80, isPaused ? 'Resume' : 'Pause');
+      drawButton(ctx, 60, 500, 392, 80, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 60, 600);
       menuTexture.needsUpdate = true;
     }
 
-    // Button meshes for raycasting
-    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0 });
+    // Button Meshes for Raycasting
+    const buttonCanvasWidth = 512, buttonCanvasHeight = 740;
+    const buttonXCanvas = 60;
+    const buttonWidthCanvas = 392;
+    const buttonHeightCanvas = 80;
 
-    function canvasToLocal(x, y, canvasWidth, canvasHeight, planeWidth, planeHeight) {
-      const u = x / canvasWidth;
-      const v = 1 - y / canvasHeight;
-      const localX = (-0.5 + u) * planeWidth;
-      const localY = (-0.5 + v) * planeHeight;
-      return { x: localX, y: localY };
+    function canvasToPlane(x, y) {
+      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect;
+      const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5);
+      return { planeX, planeY };
     }
+    let startCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 300 + buttonHeightCanvas/2);
+    let pauseCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 400 + buttonHeightCanvas/2);
+    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 500 + buttonHeightCanvas/2);
 
-    const buttons = [
-      { name: 'start', x: 80, y: 180 },
-      { name: 'pause', x: 80, y: 230 },
-      { name: 'restart', x: 80, y: 280 }
-    ];
+    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect;
+    const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight;
 
-    const buttonMeshes = buttons.map(button => {
-      const pos = canvasToLocal(button.x, button.y, 512, 512, menuWidth, menuHeight);
-      const size = { width: 100 / 512 * menuWidth, height: 40 / 512 * menuHeight };
-      const geometry = new THREE.PlaneGeometry(size.width, size.height);
-      const mesh = new THREE.Mesh(geometry, buttonMaterial);
-      mesh.position.set(pos.x, pos.y, 0.01);
-      mesh.userData.buttonName = button.name;
-      menuGroup.add(mesh);
-      return mesh;
-    });
+    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
+    buttonMaterial.colorWrite = false;
 
+    const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
+    const startButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    startButtonMesh.position.set(startCenter.planeX, startCenter.planeY, 0.01);
+    menuGroup.add(startButtonMesh);
+
+    const pauseButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    pauseButtonMesh.position.set(pauseCenter.planeX, pauseCenter.planeY, 0.01);
+    menuGroup.add(pauseButtonMesh);
+
+    const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, 0.01);
+    menuGroup.add(restartButtonMesh);
+
+    const buttonMeshes = [startButtonMesh, pauseButtonMesh, restartButtonMesh];
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
 
-    // Create a visible ray (pointer) for the controller
     function createControllerLine() {
       const geometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
@@ -500,7 +534,6 @@
       return line;
     }
 
-    // Keyboard controls for testing
     function handleKeydown(event) {
       if (isPaused || isGameOver) return;
       switch(event.key) {
@@ -541,17 +574,16 @@
       alert("Game Over! Final Score: " + score);
     }
 
-    // XR controller select event for menu interactions
     function onSelect(event) {
       tempMatrix.identity().extractRotation(event.target.matrixWorld);
       raycaster.ray.origin.setFromMatrixPosition(event.target.matrixWorld);
       raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
       const intersects = raycaster.intersectObjects(buttonMeshes);
       if (intersects.length > 0) {
-        const buttonName = intersects[0].object.userData.buttonName;
-        if (buttonName === 'start') {
+        const button = intersects[0].object;
+        if (button === startButtonMesh) {
           startGame();
-        } else if (buttonName === 'pause' && !isGameOver) {
+        } else if (button === pauseButtonMesh && !isGameOver) {
           isPaused = !isPaused;
           if (isPaused) {
             clearInterval(gameInterval);
@@ -559,13 +591,12 @@
             gameInterval = setInterval(dropPiece, dropSpeed);
           }
           updateMenuTexture();
-        } else if (buttonName === 'restart') {
+        } else if (button === restartButtonMesh) {
           startGame();
         }
       }
     }
 
-    // Setup controllers
     const controller1 = renderer.xr.getController(0);
     controller1.add(createControllerLine());
     controller1.addEventListener('select', onSelect);
@@ -592,10 +623,12 @@
             for (const source of session.inputSources) {
               if (source.handedness === 'right' && source.gamepad) {
                 const gamepad = source.gamepad;
-                const isAPressed = gamepad.buttons[4].pressed; // "A" button
+                const isAPressed = gamepad.buttons[4].pressed;
                 if (isAPressed && !wasAPressed && !boardPlaced) {
                   boardGroup.position.setFromMatrixPosition(reticle.matrix);
-                  boardGroup.lookAt(camera.position); // Ensure board faces user
+                  const camPos = new THREE.Vector3();
+                  camera.getWorldPosition(camPos);
+                  boardGroup.lookAt(new THREE.Vector3(camPos.x, boardGroup.position.y, camPos.z));
                   boardGroup.visible = true;
                   boardPlaced = true;
                   reticle.visible = false;
@@ -609,7 +642,6 @@
         }
       }
 
-      // Thumbstick input for gameplay
       if (session && boardPlaced) {
         for (const source of session.inputSources) {
           if (source.handedness === 'right' && source.gamepad) {
@@ -617,55 +649,18 @@
             const thumbstickX = gamepad.axes[2];
             const thumbstickY = gamepad.axes[3];
 
-            // Left movement
-            if (thumbstickX < -thumbstickThreshold) {
-              if (!leftHeld) {
-                leftHeld = true;
-                lastLeftTime = performance.now();
-                movePiece(-1, 0);
-              } else {
-                const currentTime = performance.now();
-                if (currentTime - lastLeftTime > moveInterval) {
-                  movePiece(-1, 0);
-                  lastLeftTime = currentTime;
-                }
-              }
-            } else {
-              leftHeld = false;
+            if (thumbstickX < -thumbstickThreshold && lastThumbstickX >= -thumbstickThreshold) {
+              movePiece(-1, 0);
+            } else if (thumbstickX > thumbstickThreshold && lastThumbstickX <= thumbstickThreshold) {
+              movePiece(1, 0);
             }
-
-            // Right movement
-            if (thumbstickX > thumbstickThreshold) {
-              if (!rightHeld) {
-                rightHeld = true;
-                lastRightTime = performance.now();
-                movePiece(1, 0);
-              } else {
-                const currentTime = performance.now();
-                if (currentTime - lastRightTime > moveInterval) {
-                  movePiece(1, 0);
-                  lastRightTime = currentTime;
-                }
-              }
-            } else {
-              rightHeld = false;
-            }
-
-            // Down movement
             if (thumbstickY > thumbstickThreshold) {
-              if (!downHeld) {
-                downHeld = true;
-                lastDownTime = performance.now();
+              if (timestamp - lastDownTimestamp > downRepeatDelay) {
                 movePiece(0, 1);
-              } else {
-                const currentTime = performance.now();
-                if (currentTime - lastDownTime > downInterval) {
-                  movePiece(0, 1);
-                  lastDownTime = currentTime;
-                }
+                lastDownTimestamp = timestamp;
               }
             } else {
-              downHeld = false;
+              lastDownTimestamp = timestamp;
             }
 
             const aButton = gamepad.buttons[4].pressed;
