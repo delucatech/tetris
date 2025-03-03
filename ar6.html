@@ -238,34 +238,27 @@
     }
 
     // -----------------
-    // Helper: Create Rounded Box Geometry
+    // Helper: Rounded Rectangle (for canvas drawing)
     // -----------------
-    function createRoundedBox(width, height, depth, radius) {
-      const shape = new THREE.Shape();
-      shape.moveTo(-width/2 + radius, -height/2);
-      shape.lineTo(width/2 - radius, -height/2);
-      shape.quadraticCurveTo(width/2, -height/2, width/2, -height/2 + radius);
-      shape.lineTo(width/2, height/2 - radius);
-      shape.quadraticCurveTo(width/2, height/2, width/2 - radius, height/2);
-      shape.lineTo(-width/2 + radius, height/2);
-      shape.quadraticCurveTo(-width/2, height/2, -width/2, height/2 - radius);
-      shape.lineTo(-width/2, -height/2 + radius);
-      shape.quadraticCurveTo(-width/2, -height/2, -width/2 + radius, -height/2);
-      const extrudeSettings = {
-        depth: depth,
-        bevelEnabled: true,
-        bevelThickness: radius/2,
-        bevelSize: radius,
-        bevelSegments: 2
-      };
-      return new THREE.ExtrudeGeometry(shape, extrudeSettings);
+    function roundedRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.arcTo(x + width, y, x + width, y + radius, radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
+      ctx.lineTo(x + radius, y + height);
+      ctx.arcTo(x, y + height, x, y + height - radius, radius);
+      ctx.lineTo(x, y + radius);
+      ctx.arcTo(x, y, x + radius, y, radius);
+      ctx.closePath();
     }
 
     // -----------------
     // Three.js AR Setup
     // -----------------
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.xr.enabled = true;
@@ -296,81 +289,18 @@
     // (No playable area background)
 
     // -----------------
-    // Next Piece Container – build as a group with a rounded, see‑through backing and a front canvas plane.
+    // Main Menu Container – single container from a canvas plane.
     // -----------------
-    const nextPieceGroup = new THREE.Group();
-    function createNextPieceContainerTexture() {
-      const canvas = document.createElement('canvas');
-      canvas.width = 128;
-      canvas.height = 128;
-      const ctx = canvas.getContext('2d');
-      // Use same container color as menu (#1c1c1e) with lower opacity.
-      ctx.fillStyle = 'rgba(28,28,30,0.6)';
-      roundedRect(ctx, 5, 5, 118, 118, 10);
-      ctx.fill();
-      return canvas;
-    }
-    const nextPieceContainerTexture = new THREE.CanvasTexture(createNextPieceContainerTexture());
-    // Front plane for next piece container.
-    const nextPiecePlaneGeometry = new THREE.PlaneGeometry(0.5, 0.5);
-    const nextPiecePlaneMaterial = new THREE.MeshBasicMaterial({ map: nextPieceContainerTexture, transparent: true });
-    const nextPiecePlane = new THREE.Mesh(nextPiecePlaneGeometry, nextPiecePlaneMaterial);
-    // Create a rounded, see‑through backing box.
-    const nextPieceBoxGeometry = createRoundedBox(0.5, 0.5, 0.05, 0.1);
-    const nextPieceBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
-    const nextPieceBox = new THREE.Mesh(nextPieceBoxGeometry, nextPieceBoxMaterial);
-    const nextPieceContainer = new THREE.Group();
-    nextPieceContainer.add(nextPieceBox);
-    // Move the front canvas plane forward so it appears on top.
-    nextPiecePlane.position.set(0, 0, 0.1);
-    nextPieceContainer.add(nextPiecePlane);
-    // The next piece preview group (rendered above the container) is offset.
-    nextPieceGroup.position.set(0, 0, 0.15);
-    nextPieceContainer.add(nextPieceGroup);
-    // Position container on the right.
-    nextPieceContainer.position.set((COLS/2 + 3) * cellSize, boardHeight / 2, 0);
-    boardGroup.add(nextPieceContainer);
-
-    // -----------------
-    // In‑game Menu – build as a group with a rounded, see‑through backing and a front canvas plane.
-    // -----------------
-    function roundedRect(ctx, x, y, width, height, radius) {
-      ctx.beginPath();
-      ctx.moveTo(x + radius, y);
-      ctx.lineTo(x + width - radius, y);
-      ctx.arcTo(x + width, y, x + width, y + radius, radius);
-      ctx.lineTo(x + width, y + height - radius);
-      ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
-      ctx.lineTo(x + radius, y + height);
-      ctx.arcTo(x, y + height, x, y + height - radius, radius);
-      ctx.lineTo(x, y + radius);
-      ctx.arcTo(x, y, x + radius, y, radius);
-      ctx.closePath();
-    }
-
-    function drawButton(ctx, x, y, width, height, text) {
-      const gradient = ctx.createLinearGradient(x, y, x, y + height);
-      gradient.addColorStop(0, '#555');
-      gradient.addColorStop(1, '#333');
-      ctx.fillStyle = gradient;
-      roundedRect(ctx, x, y, width, height, 10);
-      ctx.fill();
-      ctx.font = '24px Arial';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = 'white';
-      ctx.fillText(text, x + width/2, y + height/2);
-    }
-
     function createMenuTexture() {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
       canvas.height = 420;
       const ctx = canvas.getContext('2d');
-      // Use same container color as menu with lower opacity.
+      // Draw a rounded, translucent background.
       ctx.fillStyle = 'rgba(28,28,30,0.6)';
       roundedRect(ctx, 10, 10, 236, 400, 20);
       ctx.fill();
+      // Draw score and buttons.
       ctx.font = '24px Arial';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
@@ -386,32 +316,23 @@
         ctx.font = '30px Arial';
         ctx.textAlign = 'center';
         ctx.fillStyle = 'red';
-        ctx.fillText("Game Over", canvas.width/2, canvas.height/2 - 20);
+        ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
         ctx.fillStyle = 'white';
-        ctx.fillText("Final Score: " + score, canvas.width/2, canvas.height/2 + 20);
+        ctx.fillText("Final Score: " + score, canvas.width / 2, canvas.height / 2 + 20);
       }
       return canvas;
     }
-
     const menuTexture = new THREE.CanvasTexture(createMenuTexture());
     const menuAspect = 256 / 420;
     const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuPlaneMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
     const menuPlane = new THREE.Mesh(menuPlaneGeometry, menuPlaneMaterial);
-    // Ensure the canvas plane renders on top.
-    menuPlane.renderOrder = 1;
-    // Create a rounded, see‑through backing box for the menu.
-    const menuBoxGeometry = createRoundedBox(menuAspect, 1, 0.05, 0.1);
-    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e, transparent: true, opacity: 0.7 });
-    const menuBox = new THREE.Mesh(menuBoxGeometry, menuBoxMaterial);
-    const menuGroup = new THREE.Group();
-    menuGroup.add(menuBox);
-    // Move the menu canvas forward so buttons and text are clearly visible.
+    // Raise the canvas slightly so the drawn UI is on top.
     menuPlane.position.set(0, 0, 0.1);
-    menuGroup.add(menuPlane);
-    // Position the menu on the left.
-    menuGroup.position.set(- (COLS/2 + 3) * cellSize, boardHeight / 2, 0);
-    boardGroup.add(menuGroup);
+    // Position the main menu container on the left of the playable area.
+    menuPlane.position.x = - (COLS / 2 + 3) * cellSize;
+    menuPlane.position.y = boardHeight / 2;
+    boardGroup.add(menuPlane);
 
     function updateMenuTexture() {
       const canvas = menuTexture.image;
@@ -435,20 +356,42 @@
         ctx.font = '30px Arial';
         ctx.textAlign = 'center';
         ctx.fillStyle = 'red';
-        ctx.fillText("Game Over", canvas.width/2, canvas.height/2 - 20);
+        ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 20);
         ctx.fillStyle = 'white';
-        ctx.fillText("Final Score: " + score, canvas.width/2, canvas.height/2 + 20);
+        ctx.fillText("Final Score: " + score, canvas.width / 2, canvas.height / 2 + 20);
       }
       menuTexture.needsUpdate = true;
     }
 
     // -----------------
+    // Next Piece Container – single container from a canvas plane.
+    // -----------------
+    function createNextPieceContainerTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(28,28,30,0.6)';
+      roundedRect(ctx, 5, 5, 118, 118, 10);
+      ctx.fill();
+      return canvas;
+    }
+    const nextPieceTexture = new THREE.CanvasTexture(createNextPieceContainerTexture());
+    const nextPiecePlaneGeometry = new THREE.PlaneGeometry(0.5, 0.5);
+    const nextPiecePlaneMaterial = new THREE.MeshBasicMaterial({ map: nextPieceTexture, transparent: true });
+    const nextPiecePlane = new THREE.Mesh(nextPiecePlaneGeometry, nextPiecePlaneMaterial);
+    // Position the next piece preview (cubes) as a child, raised in front of the container.
+    nextPiecePlane.add(nextPieceGroup);
+    nextPieceGroup.position.set(0, 0, 0.1);
+    // Position the next piece container on the right of the playable area.
+    nextPiecePlane.position.set((COLS / 2 + 3) * cellSize, boardHeight / 2, 0);
+    boardGroup.add(nextPiecePlane);
+
+    // -----------------
     // Invisible Button Meshes for Menu Interaction
     // -----------------
     const buttonCanvasWidth = 256, buttonCanvasHeight = 420;
-    const buttonXCanvas = 30;
-    const buttonWidthCanvas = 196;
-    const buttonHeightCanvas = 40;
+    const buttonXCanvas = 30, buttonWidthCanvas = 196, buttonHeightCanvas = 40;
     function canvasToPlane(x, y) {
       const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect;
       const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5);
@@ -465,15 +408,15 @@
     const toggleButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     toggleButtonMesh.position.set(toggleCenter.planeX, toggleCenter.planeY, -0.01);
     toggleButtonMesh.renderOrder = -1;
-    menuGroup.add(toggleButtonMesh);
+    menuPlane.add(toggleButtonMesh);
     const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, -0.01);
     restartButtonMesh.renderOrder = -1;
-    menuGroup.add(restartButtonMesh);
+    menuPlane.add(restartButtonMesh);
     const ghostButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
     ghostButtonMesh.position.set(ghostCenter.planeX, ghostCenter.planeY, -0.01);
     ghostButtonMesh.renderOrder = -1;
-    menuGroup.add(ghostButtonMesh);
+    menuPlane.add(ghostButtonMesh);
     const buttonMeshes = [toggleButtonMesh, restartButtonMesh, ghostButtonMesh];
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
@@ -538,13 +481,13 @@
     });
 
     function boardToWorld(row, col) {
-      const x = (col - COLS/2) * cellSize + cellSize/2;
+      const x = (col - COLS / 2) * cellSize + cellSize / 2;
       const y = boardHeight - row * cellSize - cellSize;
       return new THREE.Vector3(x, y, 0);
     }
 
     function renderBoard3D() {
-      while(boardCubesGroup.children.length > 0) {
+      while (boardCubesGroup.children.length > 0) {
         boardCubesGroup.remove(boardCubesGroup.children[0]);
       }
       for (let row = 0; row < ROWS; row++) {
@@ -562,7 +505,7 @@
     }
 
     function renderActivePiece3D() {
-      while(activePieceGroup.children.length) {
+      while (activePieceGroup.children.length) {
         activePieceGroup.remove(activePieceGroup.children[0]);
       }
       if (!currentPiece) return;
@@ -584,7 +527,7 @@
     }
 
     function renderGhostPiece3D() {
-      while(ghostGroup.children.length) {
+      while (ghostGroup.children.length) {
         ghostGroup.remove(ghostGroup.children[0]);
       }
       if (!currentPiece || !ghostEnabled) return;
@@ -607,7 +550,7 @@
     }
 
     function renderNextPiece3D() {
-      while(nextPieceGroup.children.length) {
+      while (nextPieceGroup.children.length) {
         nextPieceGroup.remove(nextPieceGroup.children[0]);
       }
       if (!nextPiece) return;
