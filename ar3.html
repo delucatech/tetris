@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AR Tetris on Oculus Quest 3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    #menuContainer {
+      background: #1c1c1e;
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    #menuContainer h1 {
+      margin-bottom: 20px;
+      font-size: 2rem;
+    }
+    #menuContainer button {
+      background: #007aff;
+      border: none;
+      border-radius: 10px;
+      padding: 12px 24px;
+      font-size: 1.2rem;
+      color: white;
+      cursor: pointer;
+    }
+    #menuContainer button:hover {
+      background: #005bb5;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <div id="menuContainer">
+      <h1>Tetris AR</h1>
+      <button id="enterAR">Enter AR</button>
+    </div>
+  </div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/ARButton.js';
+
+    // Game configuration
+    const cellSize = 0.1;
+    const COLS = 10, ROWS = 20;
+    const boardWidth = COLS * cellSize;
+    const boardHeight = ROWS * cellSize;
+
+    // Game state
+    let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+    let currentPiece = null;
+    let nextPiece = null;
+    let gameInterval = null;
+    let isPaused = false;
+    let isGameOver = false;
+    let isGameStarted = false;
+    let score = 0;
+    let level = 1;
+    let lines = 0;
+    let dropSpeed = 1000;
+    let ghostEnabled = true;
+    let boardPlaced = false;
+    let wasAPressed = false;
+    let lastThumbstickX = 0;
+    let lastThumbstickY = 0;
+    let thumbstickThreshold = 0.5;
+    let lastDownTimestamp = 0;
+    const downRepeatDelay = 150;
+    let lastLeftTimestamp = 0;
+    let lastRightTimestamp = 0;
+    const horizontalRepeatDelay = 150;
+
+    // Tetromino definitions
+    const THEMES = {
+      classic: {
+        I: 'cyan', J: 'blue', L: 'orange', O: 'yellow', S: 'green', T: 'purple', Z: 'red'
+      }
+    };
+    const currentTheme = 'classic';
+    const TETROMINOS = {
+      I: { shape: [[0,0,0,0], [1,1,1,1], [0,0,0,0], [0,0,0,0]] },
+      J: { shape: [[1,0,0], [1,1,1], [0,0,0]] },
+      L: { shape: [[0,0,1], [1,1,1], [0,0,0]] },
+      O: { shape: [[1,1], [1,1]] },
+      S: { shape: [[0,1,1], [1,1,0], [0,0,0]] },
+      T: { shape: [[0,1,0], [1,1,1], [0,0,0]] },
+      Z: { shape: [[1,1,0], [0,1,1], [0,0,0]] }
+    };
+
+    function getShapesWithThemeColors() {
+      const shapes = {};
+      const themeColors = THEMES[currentTheme];
+      for (const key in TETROMINOS) {
+        shapes[key] = { shape: TETROMINOS[key].shape, color: themeColors[key] };
+      }
+      return shapes;
+    }
+    let SHAPES = getShapesWithThemeColors();
+
+    // Game logic
+    function getRandomPiece() {
+      const keys = Object.keys(SHAPES);
+      const type = keys[Math.floor(Math.random() * keys.length)];
+      const tetromino = JSON.parse(JSON.stringify(SHAPES[type]));
+      const pieceWidth = tetromino.shape[0].length;
+      tetromino.position = { x: Math.floor((COLS - pieceWidth) / 2), y: 0 };
+      return tetromino;
+    }
+
+    function isValidMove(piece, offsetX = 0, offsetY = 0) {
+      const { shape, position } = piece;
+      for (let row = 0; row < shape.length; row++) {
+        for (let col = 0; col < shape[row].length; col++) {
+          if (shape[row][col]) {
+            const boardRow = position.y + row + offsetY;
+            const boardCol = position.x + col + offsetX;
+            if (boardCol < 0 || boardCol >= COLS || boardRow >= ROWS) return false;
+            if (boardRow >= 0 && board[boardRow][boardCol]) return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    function movePiece(offsetX, offsetY) {
+      if (!currentPiece || isPaused || isGameOver) return false;
+      if (isValidMove(currentPiece, offsetX, offsetY)) {
+        currentPiece.position.x += offsetX;
+        currentPiece.position.y += offsetY;
+        updateScene();
+        return true;
+      }
+      return false;
+    }
+
+    function rotatePiece() {
+      if (!currentPiece || isPaused || isGameOver) return;
+      const rotatedShape = [];
+      for (let col = 0; col < currentPiece.shape[0].length; col++) {
+        const newRow = [];
+        for (let row = currentPiece.shape.length - 1; row >= 0; row--) {
+          newRow.push(currentPiece.shape[row][col]);
+        }
+        rotatedShape.push(newRow);
+      }
+      const originalShape = currentPiece.shape;
+      const originalPosition = { ...currentPiece.position };
+      currentPiece.shape = rotatedShape;
+      if (isValidMove(currentPiece)) {
+        updateScene();
+        return;
+      }
+      currentPiece.position.x += 1;
+      if (isValidMove(currentPiece)) {
+        updateScene();
+        return;
+      }
+      currentPiece.position.x = originalPosition.x - 1;
+      if (isValidMove(currentPiece)) {
+        updateScene();
+        return;
+      }
+      currentPiece.shape = originalShape;
+      currentPiece.position = originalPosition;
+    }
+
+    function hardDrop() {
+      if (!currentPiece || isPaused || isGameOver) return;
+      let dropDistance = 0;
+      while (isValidMove(currentPiece, 0, dropDistance + 1)) {
+        dropDistance++;
+      }
+      if (dropDistance > 0) {
+        currentPiece.position.y += dropDistance;
+        updateScene();
+        lockPiece();
+      }
+    }
+
+    function lockPiece() {
+      const { shape, position, color } = currentPiece;
+      shape.forEach((row, rowIndex) => {
+        row.forEach((value, colIndex) => {
+          if (value) {
+            const boardRow = position.y + rowIndex;
+            const boardCol = position.x + colIndex;
+            if (boardRow >= 0 && boardRow < ROWS && boardCol >= 0 && boardCol < COLS) {
+              board[boardRow][boardCol] = color;
+            }
+          }
+        });
+      });
+      checkLines();
+      currentPiece = nextPiece;
+      nextPiece = getRandomPiece();
+      updateNextPieceTexture();
+      updateScene();
+      if (!isValidMove(currentPiece)) gameOver();
+    }
+
+    function checkLines() {
+      let linesCleared = 0;
+      for (let row = ROWS - 1; row >= 0; row--) {
+        if (board[row].every(cell => cell !== 0)) {
+          board.splice(row, 1);
+          board.unshift(Array(COLS).fill(0));
+          linesCleared++;
+          row++;
+        }
+      }
+      if (linesCleared > 0) {
+        const pointValues = [0, 100, 300, 500, 800];
+        score += pointValues[linesCleared] * level;
+        lines += linesCleared;
+        level = Math.floor(lines / 10) + 1;
+        dropSpeed = Math.max(100, 1000 - (level - 1) * 100);
+        updateMenuTexture();
+        if (gameInterval) {
+          clearInterval(gameInterval);
+          gameInterval = setInterval(dropPiece, dropSpeed);
+        }
+      }
+    }
+
+    function dropPiece() {
+      if (!currentPiece || isPaused || isGameOver) return;
+      if (!movePiece(0, 1)) lockPiece();
+    }
+
+    function getGhostPosition() {
+      if (!currentPiece) return null;
+      let ghost = JSON.parse(JSON.stringify(currentPiece));
+      while (isValidMove(ghost, 0, 1)) {
+        ghost.position.y += 1;
+      }
+      return ghost.position;
+    }
+
+    // Three.js AR setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const arButton = ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] });
+    arButton.style.display = "none";
+    document.body.appendChild(arButton);
+
+    const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+    scene.add(light);
+
+    const boardGroup = new THREE.Group();
+    boardGroup.visible = false;
+    scene.add(boardGroup);
+
+    const boardCubesGroup = new THREE.Group();
+    boardGroup.add(boardCubesGroup);
+
+    const activePieceGroup = new THREE.Group();
+    boardGroup.add(activePieceGroup);
+    const ghostGroup = new THREE.Group();
+    boardGroup.add(ghostGroup);
+
+    const menuGroup = new THREE.Group();
+    boardGroup.add(menuGroup);
+
+    const nextPieceMesh = createNextPieceMesh();
+    boardGroup.add(nextPieceMesh);
+
+    // Helper functions
+    function roundedRect(ctx, x, y, width, height, radius) {
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.arcTo(x + width, y, x + width, y + radius, radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.arcTo(x + width, y + height, x + width - radius, y + height, radius);
+      ctx.lineTo(x + radius, y + height);
+      ctx.arcTo(x, y + height, x, y + height - radius, radius);
+      ctx.lineTo(x, y + radius);
+      ctx.arcTo(x, y, x + radius, y, radius);
+      ctx.closePath();
+    }
+
+    function drawButton(ctx, x, y, width, height, text) {
+      const gradient = ctx.createLinearGradient(x, y, x, y + height);
+      gradient.addColorStop(0, '#555');
+      gradient.addColorStop(1, '#333');
+      ctx.fillStyle = gradient;
+      roundedRect(ctx, x, y, width, height, 10);
+      ctx.fill();
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'white';
+      ctx.fillText(text, x + width/2, y + height/2);
+    }
+
+    // Menu setup
+    function createMenuTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 370;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      roundedRect(ctx, 10, 10, 236, 350, 20);
+      ctx.fill();
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'white';
+      ctx.fillText(`Score: ${score}`, 30, 30);
+      ctx.fillText(`Level: ${level}`, 30, 70);
+      ctx.fillText(`Lines: ${lines}`, 30, 110);
+      const buttonText = isGameStarted ? (isPaused ? 'Resume' : 'Pause') : 'Start';
+      drawButton(ctx, 30, 150, 196, 40, buttonText);
+      drawButton(ctx, 30, 200, 196, 40, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 250);
+      return canvas;
+    }
+
+    const menuTexture = new THREE.CanvasTexture(createMenuTexture());
+    const menuAspect = 256 / 370;
+    const menuGeometry = new THREE.PlaneGeometry(menuAspect, 1);
+    const menuMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
+    const menuMesh = new THREE.Mesh(menuGeometry, menuMaterial);
+    menuGroup.add(menuMesh);
+
+    function updateMenuTexture() {
+      const canvas = menuTexture.image;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      roundedRect(ctx, 10, 10, 236, 350, 20);
+      ctx.fill();
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'white';
+      ctx.fillText(`Score: ${score}`, 30, 30);
+      ctx.fillText(`Level: ${level}`, 30, 70);
+      ctx.fillText(`Lines: ${lines}`, 30, 110);
+      const buttonText = isGameStarted ? (isPaused ? 'Resume' : 'Pause') : 'Start';
+      drawButton(ctx, 30, 150, 196, 40, buttonText);
+      drawButton(ctx, 30, 200, 196, 40, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 250);
+      menuTexture.needsUpdate = true;
+    }
+
+    // Next piece setup
+    function createNextPieceTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      roundedRect(ctx, 10, 10, 108, 108, 10);
+      ctx.fill();
+      return canvas;
+    }
+
+    function createNextPieceMesh() {
+      const texture = new THREE.CanvasTexture(createNextPieceTexture());
+      const geometry = new THREE.PlaneGeometry(0.5, 0.5);
+      const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true });
+      return new THREE.Mesh(geometry, material);
+    }
+
+    function updateNextPieceTexture() {
+      const canvas = nextPieceMesh.material.map.image;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      roundedRect(ctx, 10, 10, 108, 108, 10);
+      ctx.fill();
+      if (nextPiece) {
+        const { shape, color } = nextPiece;
+        const pieceHeight = shape.length;
+        const pieceWidth = shape[0].length;
+        const cellPixelSize = 24;
+        const offsetX = (128 - pieceWidth * cellPixelSize) / 2;
+        const offsetY = (128 - pieceHeight * cellPixelSize) / 2;
+        shape.forEach((rowArr, rowIndex) => {
+          rowArr.forEach((value, colIndex) => {
+            if (value) {
+              const x = offsetX + colIndex * cellPixelSize;
+              const y = offsetY + rowIndex * cellPixelSize;
+              ctx.fillStyle = color;
+              ctx.fillRect(x, y, cellPixelSize, cellPixelSize);
+            }
+          });
+        });
+      }
+      nextPieceMesh.material.map.needsUpdate = true;
+    }
+
+    // Border setup
+    const borderWidth = 0.02;
+    const borderColor = 0xffffff;
+    const borderOpacity = 0.5;
+    const borderGroup = new THREE.Group();
+    const borderMaterial = new THREE.MeshBasicMaterial({ color: borderColor, transparent: true, opacity: borderOpacity });
+
+    const leftBorderGeom = new THREE.BoxGeometry(borderWidth, boardHeight, borderWidth);
+    const leftBorder = new THREE.Mesh(leftBorderGeom, borderMaterial);
+    leftBorder.position.set(-COLS/2 * cellSize - borderWidth/2, boardHeight/2, 0);
+    borderGroup.add(leftBorder);
+
+    const rightBorder = new THREE.Mesh(leftBorderGeom, borderMaterial);
+    rightBorder.position.set(COLS/2 * cellSize + borderWidth/2, boardHeight/2, 0);
+    borderGroup.add(rightBorder);
+
+    const horizontalBorderGeom = new THREE.BoxGeometry(boardWidth, borderWidth, borderWidth);
+    const bottomBorder = new THREE.Mesh(horizontalBorderGeom, borderMaterial);
+    bottomBorder.position.set(0, 0, 0);
+    borderGroup.add(bottomBorder);
+
+    const topBorder = new THREE.Mesh(horizontalBorderGeom, borderMaterial);
+    topBorder.position.set(0, boardHeight, 0);
+    borderGroup.add(topBorder);
+    boardGroup.add(borderGroup);
+
+    // Positioning
+    const margin = 0.1;
+    const boardLeft = -COLS/2 * cellSize;
+    const boardRight = COLS/2 * cellSize;
+    const menuWidth = menuAspect;
+    menuGroup.position.set(boardLeft - margin - menuWidth/2, boardHeight/2, 0);
+    nextPieceMesh.position.set(boardRight + margin + 0.25, boardHeight/2, 0);
+
+    // Raycasting buttons
+    const buttonCanvasWidth = 256, buttonCanvasHeight = 370;
+    const buttonXCanvas = 30, buttonWidthCanvas = 196, buttonHeightCanvas = 40;
+
+    function canvasToPlane(x, y) {
+      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect;
+      const planeY = (buttonCanvasHeight - y) / buttonCanvasHeight - 0.5;
+      return { planeX, planeY };
+    }
+
+    const gameButtonCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
+    const restartButtonCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 200 + buttonHeightCanvas/2);
+
+    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect;
+    const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight;
+    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
+    buttonMaterial.colorWrite = false;
+    const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
+
+    const gameButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    gameButtonMesh.position.set(gameButtonCenter.planeX, gameButtonCenter.planeY, 0.01);
+    menuGroup.add(gameButtonMesh);
+
+    const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    restartButtonMesh.position.set(restartButtonCenter.planeX, restartButtonCenter.planeY, 0.01);
+    menuGroup.add(restartButtonMesh);
+
+    const buttonMeshes = [gameButtonMesh, restartButtonMesh];
+    const raycaster = new THREE.Raycaster();
+    const tempMatrix = new THREE.Matrix4();
+
+    function createControllerLine() {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -1)
+      ]);
+      const material = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 5 });
+      const line = new THREE.Line(geometry, material);
+      line.scale.z = 10;
+      return line;
+    }
+
+    function handleKeydown(event) {
+      if (isPaused || isGameOver) return;
+      switch(event.key) {
+        case 'ArrowLeft': movePiece(-1, 0); break;
+        case 'ArrowRight': movePiece(1, 0); break;
+        case 'ArrowDown': movePiece(0, 1); break;
+        case 'ArrowUp': rotatePiece(); break;
+        case ' ': case 'Spacebar': hardDrop(); break;
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+
+    function startGame() {
+      if (!boardPlaced) {
+        alert("Please place the board first by aiming at a surface and pressing the 'A' button.");
+        return;
+      }
+      if (gameInterval) clearInterval(gameInterval);
+      board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+      score = 0;
+      level = 1;
+      lines = 0;
+      dropSpeed = 1000;
+      isPaused = false;
+      isGameOver = false;
+      isGameStarted = true;
+      currentPiece = getRandomPiece();
+      nextPiece = getRandomPiece();
+      updateMenuTexture();
+      updateNextPieceTexture();
+      updateScene();
+      gameInterval = setInterval(dropPiece, dropSpeed);
+    }
+
+    function gameOver() {
+      isGameOver = true;
+      isGameStarted = false;
+      clearInterval(gameInterval);
+      gameInterval = null;
+      updateMenuTexture();
+      alert("Game Over! Final Score: " + score);
+    }
+
+    function onSelect(event) {
+      tempMatrix.identity().extractRotation(event.target.matrixWorld);
+      raycaster.ray.origin.setFromMatrixPosition(event.target.matrixWorld);
+      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+      const intersects = raycaster.intersectObjects(buttonMeshes);
+      if (intersects.length > 0) {
+        const button = intersects[0].object;
+        if (button === gameButtonMesh && !isGameOver) {
+          if (!isGameStarted) {
+            startGame();
+          } else {
+            isPaused = !isPaused;
+            if (isPaused) {
+              clearInterval(gameInterval);
+            } else {
+              gameInterval = setInterval(dropPiece, dropSpeed);
+            }
+            updateMenuTexture();
+          }
+        } else if (button === restartButtonMesh) {
+          startGame();
+        }
+      }
+    }
+
+    const controller1 = renderer.xr.getController(0);
+    controller1.add(createControllerLine());
+    controller1.addEventListener('select', onSelect);
+    scene.add(controller1);
+
+    const controller2 = renderer.xr.getController(1);
+    controller2.add(createControllerLine());
+    controller2.addEventListener('select', onSelect);
+    scene.add(controller2);
+
+    let reticle;
+    {
+      const geometry = new THREE.RingGeometry(0.05, 0.06, 32);
+      geometry.rotateX(-Math.PI / 2);
+      const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      reticle = new THREE.Mesh(geometry, material);
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
+      scene.add(reticle);
+    }
+
+    let hitTestSource = null;
+    let localSpace = null;
+    renderer.xr.addEventListener('sessionstart', async () => {
+      const session = renderer.xr.getSession();
+      const viewerSpace = await session.requestReferenceSpace('viewer');
+      hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+      localSpace = await session.requestReferenceSpace('local');
+    });
+    renderer.xr.addEventListener('sessionend', () => {
+      hitTestSource = null;
+      localSpace = null;
+    });
+
+    function boardToWorld(row, col) {
+      const x = (col - COLS/2) * cellSize + cellSize/2;
+      const y = boardHeight - row * cellSize - cellSize;
+      const z = 0;
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function renderBoard3D() {
+      while(boardCubesGroup.children.length > 0) {
+        boardCubesGroup.remove(boardCubesGroup.children[0]);
+      }
+      for (let row = 0; row < ROWS; row++) {
+        for (let col = 0; col < COLS; col++) {
+          if (board[row][col]) {
+            const pos = boardToWorld(row, col);
+            const geometry = new THREE.BoxGeometry(cellSize, cellSize, cellSize);
+            const material = new THREE.MeshStandardMaterial({ color: board[row][col] });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.copy(pos);
+            boardCubesGroup.add(cube);
+          }
+        }
+      }
+    }
+
+    function renderActivePiece3D() {
+      while(activePieceGroup.children.length) {
+        activePieceGroup.remove(activePieceGroup.children[0]);
+      }
+      if (!currentPiece) return;
+      const { shape, position, color } = currentPiece;
+      shape.forEach((rowArr, rowIndex) => {
+        rowArr.forEach((value, colIndex) => {
+          if (value) {
+            const boardRow = position.y + rowIndex;
+            const boardCol = position.x + colIndex;
+            const pos = boardToWorld(boardRow, boardCol);
+            const geometry = new THREE.BoxGeometry(cellSize, cellSize, cellSize);
+            const material = new THREE.MeshStandardMaterial({ color: color });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.copy(pos);
+            activePieceGroup.add(cube);
+          }
+        });
+      });
+    }
+
+    function renderGhostPiece3D() {
+      while(ghostGroup.children.length) {
+        ghostGroup.remove(ghostGroup.children[0]);
+      }
+      if (!currentPiece || !ghostEnabled) return;
+      const ghostPos = getGhostPosition();
+      const { shape, color } = currentPiece;
+      shape.forEach((rowArr, rowIndex) => {
+        rowArr.forEach((value, colIndex) => {
+          if (value) {
+            const boardRow = ghostPos.y + rowIndex;
+            const boardCol = ghostPos.x + colIndex;
+            const pos = boardToWorld(boardRow, boardCol);
+            const geometry = new THREE.BoxGeometry(cellSize, cellSize, cellSize);
+            const material = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.3 });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.copy(pos);
+            ghostGroup.add(cube);
+          }
+        });
+      });
+    }
+
+    function updateScene() {
+      renderBoard3D();
+      renderActivePiece3D();
+      renderGhostPiece3D();
+    }
+
+    function animate(timestamp, frame) {
+      const session = renderer.xr.getSession();
+      if (hitTestSource && frame) {
+        const referenceSpace = localSpace;
+        const hitTestResults = frame.getHitTestResults(hitTestSource);
+        if (!boardPlaced && hitTestResults.length > 0) {
+          const hit = hitTestResults[0];
+          const pose = hit.getPose(referenceSpace);
+          reticle.visible = true;
+          reticle.matrix.fromArray(pose.transform.matrix);
+
+          if (session) {
+            for (const source of session.inputSources) {
+              if (source.handedness === 'right' && source.gamepad) {
+                const gamepad = source.gamepad;
+                const isAPressed = gamepad.buttons[4].pressed;
+                if (isAPressed && !wasAPressed && !boardPlaced) {
+                  boardGroup.position.setFromMatrixPosition(reticle.matrix);
+                  const camPos = new THREE.Vector3();
+                  camera.getWorldPosition(camPos);
+                  boardGroup.lookAt(new THREE.Vector3(camPos.x, boardGroup.position.y, camPos.z));
+                  boardGroup.visible = true;
+                  boardPlaced = true;
+                  reticle.visible = false;
+                }
+                wasAPressed = isAPressed;
+              }
+            }
+          }
+        } else {
+          reticle.visible = false;
+        }
+      }
+
+      if (session && boardPlaced) {
+        for (const source of session.inputSources) {
+          if (source.handedness === 'right' && source.gamepad) {
+            const gamepad = source.gamepad;
+            const thumbstickX = gamepad.axes[2];
+            const thumbstickY = gamepad.axes[3];
+
+            if (thumbstickX < -thumbstickThreshold) {
+              if (timestamp - lastLeftTimestamp > horizontalRepeatDelay) {
+                movePiece(-1, 0);
+                lastLeftTimestamp = timestamp;
+              }
+            } else {
+              lastLeftTimestamp = timestamp;
+            }
+            if (thumbstickX > thumbstickThreshold) {
+              if (timestamp - lastRightTimestamp > horizontalRepeatDelay) {
+                movePiece(1, 0);
+                lastRightTimestamp = timestamp;
+              }
+            } else {
+              lastRightTimestamp = timestamp;
+            }
+            if (thumbstickY > thumbstickThreshold) {
+              if (timestamp - lastDownTimestamp > downRepeatDelay) {
+                movePiece(0, 1);
+                lastDownTimestamp = timestamp;
+              }
+            } else {
+              lastDownTimestamp = timestamp;
+            }
+
+            const aButton = gamepad.buttons[4].pressed;
+            if (aButton && !wasAPressed) rotatePiece();
+            const bButton = gamepad.buttons[5].pressed;
+            if (bButton) hardDrop();
+
+            lastThumbstickX = thumbstickX;
+            lastThumbstickY = thumbstickY;
+            wasAPressed = aButton;
+          }
+        }
+      }
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(animate);
+  </script>
+  <script>
+    document.getElementById('enterAR').addEventListener('click', () => {
+      document.getElementById('overlay').style.display = 'none';
+      arButton.click();
+    });
+  </script>
+</body>
+</html>
