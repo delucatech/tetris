@@ -272,7 +272,7 @@
     scene.add(light);
 
     // -----------------
-    // Board Group (holds board‑related objects)
+    // Board Group (holds board-related objects)
     // -----------------
     const boardGroup = new THREE.Group();
     boardGroup.visible = false;
@@ -286,11 +286,13 @@
     const ghostGroup = new THREE.Group();
     boardGroup.add(ghostGroup);
 
-    // (No playable area background)
+    // -----------------
+    // UI Group – holds the main menu and next piece containers.
+    // This group is added to boardGroup only after the board is placed.
+    // -----------------
+    const uiGroup = new THREE.Group();
 
-    // -----------------
-    // Main Menu Container – single container from a canvas plane.
-    // -----------------
+    // Main Menu Container (a single canvas plane)
     function createMenuTexture() {
       const canvas = document.createElement('canvas');
       canvas.width = 256;
@@ -327,12 +329,12 @@
     const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuPlaneMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
     const menuPlane = new THREE.Mesh(menuPlaneGeometry, menuPlaneMaterial);
-    // Raise the canvas slightly so the drawn UI is on top.
+    // Raise the canvas so that the drawn UI (text and buttons) is visible.
     menuPlane.position.set(0, 0, 0.1);
-    // Position the main menu container on the left of the playable area.
+    // Position the main menu on the left (outside the playable area).
     menuPlane.position.x = - (COLS / 2 + 3) * cellSize;
     menuPlane.position.y = boardHeight / 2;
-    boardGroup.add(menuPlane);
+    uiGroup.add(menuPlane);
 
     function updateMenuTexture() {
       const canvas = menuTexture.image;
@@ -363,9 +365,7 @@
       menuTexture.needsUpdate = true;
     }
 
-    // -----------------
-    // Next Piece Container – single container from a canvas plane.
-    // -----------------
+    // Next Piece Container (a single canvas plane)
     function createNextPieceContainerTexture() {
       const canvas = document.createElement('canvas');
       canvas.width = 128;
@@ -380,15 +380,18 @@
     const nextPiecePlaneGeometry = new THREE.PlaneGeometry(0.5, 0.5);
     const nextPiecePlaneMaterial = new THREE.MeshBasicMaterial({ map: nextPieceTexture, transparent: true });
     const nextPiecePlane = new THREE.Mesh(nextPiecePlaneGeometry, nextPiecePlaneMaterial);
-    // Position the next piece preview (cubes) as a child, raised in front of the container.
+    // For next piece, add the preview cubes as a child of the canvas plane (offset in Z so they appear on top).
     nextPiecePlane.add(nextPieceGroup);
     nextPieceGroup.position.set(0, 0, 0.1);
-    // Position the next piece container on the right of the playable area.
+    // Position the next piece container on the right (outside the playable area).
     nextPiecePlane.position.set((COLS / 2 + 3) * cellSize, boardHeight / 2, 0);
-    boardGroup.add(nextPiecePlane);
+    uiGroup.add(nextPiecePlane);
+
+    // Now add the uiGroup to the boardGroup.
+    boardGroup.add(uiGroup);
 
     // -----------------
-    // Invisible Button Meshes for Menu Interaction
+    // Invisible Button Meshes for Menu Interaction (added as children of menuPlane)
     // -----------------
     const buttonCanvasWidth = 256, buttonCanvasHeight = 420;
     const buttonXCanvas = 30, buttonWidthCanvas = 196, buttonHeightCanvas = 40;
