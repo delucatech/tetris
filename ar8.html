@@ -524,35 +524,39 @@
     // -----------------
     // Invisible Button Meshes for Menu Interaction
     // -----------------
-    const buttonCanvasWidth = 256, buttonCanvasHeight = 420;
-    const buttonXCanvas = 30;
-    const buttonWidthCanvas = 196;
-    const buttonHeightCanvas = 40;
     function canvasToPlane(x, y) {
-      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect;
-      const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5);
+      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect * 0.75;
+      const planeY = ((buttonCanvasHeight - y) / buttonCanvasHeight - 0.5) * 0.75;
       return { planeX, planeY };
     }
+    
     let toggleCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
     let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 210 + buttonHeightCanvas/2);
     let ghostCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 270 + buttonHeightCanvas/2);
-    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect;
-    const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight;
+    
+    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect * 0.75;
+    const buttonPlaneHeight = (buttonHeightCanvas / buttonCanvasHeight) * 0.75;
+    
     const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0 });
     buttonMaterial.colorWrite = false;
+    
     const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
+    
     const toggleButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    toggleButtonMesh.position.set(toggleCenter.planeX, toggleCenter.planeY, -0.01);
+    toggleButtonMesh.position.set(toggleCenter.planeX, toggleCenter.planeY, 0.035);
     toggleButtonMesh.renderOrder = -1;
     menuGroup.add(toggleButtonMesh);
+    
     const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, -0.01);
+    restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, 0.035);
     restartButtonMesh.renderOrder = -1;
     menuGroup.add(restartButtonMesh);
+    
     const ghostButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
-    ghostButtonMesh.position.set(ghostCenter.planeX, ghostCenter.planeY, -0.01);
+    ghostButtonMesh.position.set(ghostCenter.planeX, ghostCenter.planeY, 0.035);
     ghostButtonMesh.renderOrder = -1;
     menuGroup.add(ghostButtonMesh);
+    
     const buttonMeshes = [toggleButtonMesh, restartButtonMesh, ghostButtonMesh];
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
