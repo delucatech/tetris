@@ -258,7 +258,8 @@
 
     // 3D rendering
     function renderBoard3D() {
-      while(boardGroup.children.length > 1) { // Keep nextPieceGroup
+      // Remove all board cubes except the nextPieceGroup
+      while(boardGroup.children.length > 1) {
         boardGroup.remove(boardGroup.children[0]);
       }
       for (let row = 0; row < ROWS; row++) {
@@ -360,6 +361,7 @@
     boardGroup.add(menuGroup);
     menuGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
 
+    // Helper for drawing rounded rectangles
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
       ctx.moveTo(x + radius, y);
@@ -374,6 +376,7 @@
       ctx.closePath();
     }
 
+    // Improved drawButton with centered text
     function drawButton(ctx, x, y, width, height, text) {
       const gradient = ctx.createLinearGradient(x, y, x, y + height);
       gradient.addColorStop(0, '#555');
@@ -381,8 +384,11 @@
       ctx.fillStyle = gradient;
       roundedRect(ctx, x, y, width, height, 10);
       ctx.fill();
+      ctx.font = '24px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
       ctx.fillStyle = 'white';
-      ctx.fillText(text, x + 20, y + 25);
+      ctx.fillText(text, x + width/2, y + height/2);
     }
 
     function createMenuTexture() {
@@ -393,15 +399,16 @@
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
       roundedRect(ctx, 10, 10, 492, 492, 20);
       ctx.fill();
-      ctx.fillStyle = 'white';
       ctx.font = '24px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'white';
       ctx.fillText(`Score: ${score}`, 30, 50);
       ctx.fillText(`Level: ${level}`, 30, 90);
       ctx.fillText(`Lines: ${lines}`, 30, 130);
       drawButton(ctx, 30, 160, 100, 40, 'Start');
       drawButton(ctx, 30, 210, 100, 40, isPaused ? 'Resume' : 'Pause');
       drawButton(ctx, 30, 260, 100, 40, 'Restart');
-      ctx.fillStyle = 'white';
       ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 310);
       return canvas;
     }
@@ -419,22 +426,23 @@
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
       roundedRect(ctx, 10, 10, 492, 492, 20);
       ctx.fill();
-      ctx.fillStyle = 'white';
       ctx.font = '24px Arial';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillStyle = 'white';
       ctx.fillText(`Score: ${score}`, 30, 50);
       ctx.fillText(`Level: ${level}`, 30, 90);
       ctx.fillText(`Lines: ${lines}`, 30, 130);
       drawButton(ctx, 30, 160, 100, 40, 'Start');
       drawButton(ctx, 30, 210, 100, 40, isPaused ? 'Resume' : 'Pause');
       drawButton(ctx, 30, 260, 100, 40, 'Restart');
-      ctx.fillStyle = 'white';
       ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 310);
       menuTexture.needsUpdate = true;
     }
 
-    // Button meshes for interaction
+    // Button meshes for visual feedback and raycasting
     const buttonGeometry = new THREE.PlaneGeometry(0.1953, 0.0781);
-    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, visible: true, transparent: true, opacity: 0.5 });
+    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5 });
     const startButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
     startButtonMesh.position.set(-0.3633, 0.1484, 0.01);
     menuGroup.add(startButtonMesh);
@@ -451,7 +459,7 @@
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
 
-    // User input (keyboard still available for testing)
+    // Allow keyboard controls for testing
     function handleKeydown(event) {
       if (isPaused || isGameOver) return;
       switch(event.key) {
@@ -464,7 +472,7 @@
     }
     document.addEventListener('keydown', handleKeydown);
 
-    // Game controls
+    // Game control functions
     function startGame() {
       if (!boardPlaced) {
         alert("Please place the board first by aiming at a surface and pressing the 'A' button on the Oculus controller.");
@@ -492,6 +500,39 @@
       alert("Game Over! Final Score: " + score);
     }
 
+    // Add XR controller select event for menu interactions
+    function onSelect(event) {
+      // Cast a ray from the controller to detect menu buttons
+      tempMatrix.identity().extractRotation(event.target.matrixWorld);
+      raycaster.ray.origin.setFromMatrixPosition(event.target.matrixWorld);
+      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+      const intersects = raycaster.intersectObjects(buttonMeshes);
+      if (intersects.length > 0) {
+        const button = intersects[0].object;
+        if (button === startButtonMesh) {
+          startGame();
+        } else if (button === pauseButtonMesh && !isGameOver) {
+          isPaused = !isPaused;
+          if (isPaused) {
+            clearInterval(gameInterval);
+          } else {
+            gameInterval = setInterval(dropPiece, dropSpeed);
+          }
+          updateMenuTexture();
+        } else if (button === restartButtonMesh) {
+          startGame();
+        }
+      }
+    }
+
+    const controller1 = renderer.xr.getController(0);
+    controller1.addEventListener('select', onSelect);
+    scene.add(controller1);
+
+    const controller2 = renderer.xr.getController(1);
+    controller2.addEventListener('select', onSelect);
+    scene.add(controller2);
+
     // AR render loop
     function animate(timestamp, frame) {
       const session = renderer.xr.getSession();
@@ -508,7 +549,7 @@
             for (const source of session.inputSources) {
               if (source.handedness === 'right' && source.gamepad) {
                 const gamepad = source.gamepad;
-                const isAPressed = gamepad.buttons[4].pressed; // "A" button
+                const isAPressed = gamepad.buttons[4].pressed; // "A" button for board placement
                 if (isAPressed && !wasAPressed && !boardPlaced) {
                   boardGroup.position.setFromMatrixPosition(reticle.matrix);
                   boardGroup.visible = true;
@@ -524,14 +565,13 @@
         }
       }
 
+      // Use thumbstick input for gameplay actions (moving/rotating/dropping pieces)
       if (session && boardPlaced) {
         for (const source of session.inputSources) {
           if (source.handedness === 'right' && source.gamepad) {
             const gamepad = source.gamepad;
             const thumbstickX = gamepad.axes[2]; // Right thumbstick X-axis
             const thumbstickY = gamepad.axes[3]; // Right thumbstick Y-axis
-            const aButton = gamepad.buttons[4].pressed; // "A" button
-            const bButton = gamepad.buttons[5].pressed; // "B" button
 
             // Move left/right with thumbstick X-axis
             if (thumbstickX < -thumbstickThreshold && lastThumbstickX >= -thumbstickThreshold) movePiece(-1, 0);
@@ -540,42 +580,17 @@
             // Move down faster with thumbstick Y-axis
             if (thumbstickY > thumbstickThreshold && lastThumbstickY <= thumbstickThreshold) movePiece(0, 1);
 
-            // Rotate with "A" button
+            // Rotate with "A" button (while not interfering with board placement)
+            const aButton = gamepad.buttons[4].pressed;
             if (aButton && !wasAPressed) rotatePiece();
 
             // Hard drop with "B" button
+            const bButton = gamepad.buttons[5].pressed;
             if (bButton) hardDrop();
 
             lastThumbstickX = thumbstickX;
             lastThumbstickY = thumbstickY;
             wasAPressed = aButton;
-          }
-        }
-      }
-
-      // Button interaction with raycasting
-      if (session && boardPlaced) {
-        for (const source of session.inputSources) {
-          if (source.handedness === 'right') {
-            const controller = renderer.xr.getController(0);
-            tempMatrix.identity().extractRotation(controller.matrixWorld);
-            raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-            raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-            const intersects = raycaster.intersectObjects(buttonMeshes);
-            buttonMeshes.forEach(mesh => mesh.material.color.set(0x808080)); // Reset to gray
-            if (intersects.length > 0) {
-              const button = intersects[0].object;
-              button.material.color.set(0x00ff00); // Highlight green
-              if (source.gamepad.buttons[0].pressed) { // Trigger pressed
-                if (button === startButtonMesh) startGame();
-                else if (button === pauseButtonMesh && !isGameOver) {
-                  isPaused = !isPaused;
-                  if (isPaused) clearInterval(gameInterval);
-                  else gameInterval = setInterval(dropPiece, dropSpeed);
-                  updateMenuTexture();
-                } else if (button === restartButtonMesh) startGame();
-              }
-            }
           }
         }
       }
