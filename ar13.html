@@ -327,19 +327,26 @@
     let sessionInit = { requiredFeatures: ['hit-test'] };
 
     function showStartAR() {
+      console.log("showStartAR function called"); // Debug log
       arButton.style.display = '';
       arButton.textContent = 'START AR';
 
       arButton.onclick = async () => {
+        console.log("ARButton onclick triggered"); // Debug log
         if (currentSession === null) {
+          console.log("Current session is null, requesting AR session"); // Debug log
           try {
+            console.log("Before requestSession"); // Debug log
             currentSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+            console.log("After requestSession, session started successfully"); // Debug log
             onSessionStarted(currentSession);
           } catch (error) {
             console.error("Failed to start AR session:", error);
+            console.log("AR session request failed, calling onSessionEnded"); // Debug log
             onSessionEnded(); // Revert button state if session fails to start
           }
         } else {
+          console.log("Current session exists, ending session"); // Debug log
           currentSession.end();
         }
       };
@@ -359,6 +366,7 @@
     }
 
     async function onSessionStarted( session ) {
+      console.log("onSessionStarted function called"); // Debug log
       session.addEventListener( 'end', onSessionEnded );
       renderer.xr.setReferenceSpaceType( 'local' );
       await renderer.xr.setSession( session );
@@ -368,6 +376,7 @@
     }
 
     function onSessionEnded( /*event*/ ) {
+      console.log("onSessionEnded function called"); // Debug log
       if (currentSession) {
         currentSession.removeEventListener( 'end', onSessionEnded );
       }
