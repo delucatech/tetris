@@ -35,6 +35,9 @@
     let lastThumbstickX = 0;
     let lastThumbstickY = 0;
     let thumbstickThreshold = 0.5;
+    // For continuous down movement
+    let lastDownTimestamp = 0;
+    const downRepeatDelay = 150; // in ms
 
     // Tetromino definitions
     const THEMES = {
@@ -267,7 +270,6 @@
 
     // 3D rendering functions
 
-    // Render the board cubes (placed pieces) only in boardCubesGroup.
     function renderBoard3D() {
       while(boardCubesGroup.children.length > 0) {
         boardCubesGroup.remove(boardCubesGroup.children[0]);
@@ -369,6 +371,8 @@
     // Menu setup
     const menuGroup = new THREE.Group();
     boardGroup.add(menuGroup);
+    // Position the menu relative to the boardGroup.
+    // (Its placement relative to boardGroup is maintained; the boardGroup will be rotated to face the camera.)
     menuGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
 
     // Helper for drawing rounded rectangles
@@ -401,31 +405,36 @@
       ctx.fillText(text, x + width/2, y + height/2);
     }
 
+    // Create menu texture using a canvas sized exactly to fit the content.
     function createMenuTexture() {
       const canvas = document.createElement('canvas');
-      canvas.width = 512;
-      canvas.height = 512;
+      canvas.width = 256;
+      canvas.height = 370;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      roundedRect(ctx, 10, 10, 492, 492, 20);
+      roundedRect(ctx, 10, 10, 236, 350, 20);
       ctx.fill();
       ctx.font = '24px Arial';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillStyle = 'white';
-      ctx.fillText(`Score: ${score}`, 30, 50);
-      ctx.fillText(`Level: ${level}`, 30, 90);
-      ctx.fillText(`Lines: ${lines}`, 30, 130);
-      drawButton(ctx, 30, 160, 100, 40, 'Start');
-      drawButton(ctx, 30, 210, 100, 40, isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 260, 100, 40, 'Restart');
-      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 310);
+      ctx.fillText(`Score: ${score}`, 30, 30);
+      ctx.fillText(`Level: ${level}`, 30, 70);
+      ctx.fillText(`Lines: ${lines}`, 30, 110);
+      drawButton(ctx, 30, 150, 196, 40, 'Start');
+      drawButton(ctx, 30, 200, 196, 40, isPaused ? 'Resume' : 'Pause');
+      drawButton(ctx, 30, 250, 196, 40, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 300);
       return canvas;
     }
 
     const menuTexture = new THREE.CanvasTexture(createMenuTexture());
+    // Set the texture to not flip so the drawn coordinates match our expectations.
+    menuTexture.flipY = false;
     const menuMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
-    const menuGeometry = new THREE.PlaneGeometry(1, 1);
+    // The menu plane geometry is sized to the same aspect ratio as the canvas.
+    const menuAspect = 256 / 370;
+    const menuGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuMesh = new THREE.Mesh(menuGeometry, menuMaterial);
     menuGroup.add(menuMesh);
 
@@ -434,35 +443,60 @@
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      roundedRect(ctx, 10, 10, 492, 492, 20);
+      roundedRect(ctx, 10, 10, 236, 350, 20);
       ctx.fill();
       ctx.font = '24px Arial';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       ctx.fillStyle = 'white';
-      ctx.fillText(`Score: ${score}`, 30, 50);
-      ctx.fillText(`Level: ${level}`, 30, 90);
-      ctx.fillText(`Lines: ${lines}`, 30, 130);
-      drawButton(ctx, 30, 160, 100, 40, 'Start');
-      drawButton(ctx, 30, 210, 100, 40, isPaused ? 'Resume' : 'Pause');
-      drawButton(ctx, 30, 260, 100, 40, 'Restart');
-      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 310);
+      ctx.fillText(`Score: ${score}`, 30, 30);
+      ctx.fillText(`Level: ${level}`, 30, 70);
+      ctx.fillText(`Lines: ${lines}`, 30, 110);
+      drawButton(ctx, 30, 150, 196, 40, 'Start');
+      drawButton(ctx, 30, 200, 196, 40, isPaused ? 'Resume' : 'Pause');
+      drawButton(ctx, 30, 250, 196, 40, 'Restart');
+      ctx.fillText(`Show Ghost: ${ghostEnabled ? 'On' : 'Off'}`, 30, 300);
       menuTexture.needsUpdate = true;
     }
 
-    // Button meshes for visual feedback and raycasting
-    const buttonGeometry = new THREE.PlaneGeometry(0.1953, 0.0781);
+    // Button meshes for visual feedback and raycasting.
+    // Convert canvas button coordinates to menu plane coordinates.
+    // Canvas: width=256, height=370. Plane: width=menuAspect, height=1.
+    // Mapping: planeX = (canvasX/256 - 0.5)*menuAspect, planeY = (0.5 - canvasY/370)
     const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5 });
-    const startButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    startButtonMesh.position.set(-0.3633, 0.1484, 0.01);
+    const buttonCanvasWidth = 256, buttonCanvasHeight = 370;
+    const buttonXCanvas = 30;
+    const buttonWidthCanvas = 196; // 256 - 2*30 = 196
+    const buttonHeightCanvas = 40;
+
+    function canvasToPlane(x, y) {
+      const planeX = (x / buttonCanvasWidth - 0.5) * menuAspect;
+      const planeY = 0.5 - y / buttonCanvasHeight;
+      return { planeX, planeY };
+    }
+    // Calculate centers for each button.
+    // Start button drawn at (30,150)
+    let startCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 150 + buttonHeightCanvas/2);
+    // Pause button drawn at (30,200)
+    let pauseCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 200 + buttonHeightCanvas/2);
+    // Restart button drawn at (30,250)
+    let restartCenter = canvasToPlane(buttonXCanvas + buttonWidthCanvas/2, 250 + buttonHeightCanvas/2);
+
+    // Button dimensions in plane coordinates.
+    const buttonPlaneWidth = (buttonWidthCanvas / buttonCanvasWidth) * menuAspect; // approx 0.5297
+    const buttonPlaneHeight = buttonHeightCanvas / buttonCanvasHeight; // approx 0.1081
+
+    const buttonGeom = new THREE.PlaneGeometry(buttonPlaneWidth, buttonPlaneHeight);
+    const startButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    startButtonMesh.position.set(startCenter.planeX, startCenter.planeY, 0.01);
     menuGroup.add(startButtonMesh);
 
-    const pauseButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    pauseButtonMesh.position.set(-0.3633, 0.0508, 0.01);
+    const pauseButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    pauseButtonMesh.position.set(pauseCenter.planeX, pauseCenter.planeY, 0.01);
     menuGroup.add(pauseButtonMesh);
 
-    const restartButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    restartButtonMesh.position.set(-0.3633, -0.0465, 0.01);
+    const restartButtonMesh = new THREE.Mesh(buttonGeom, buttonMaterial);
+    restartButtonMesh.position.set(restartCenter.planeX, restartCenter.planeY, 0.01);
     menuGroup.add(restartButtonMesh);
 
     const buttonMeshes = [startButtonMesh, pauseButtonMesh, restartButtonMesh];
@@ -470,7 +504,6 @@
     const tempMatrix = new THREE.Matrix4();
 
     // Create a visible ray (pointer) for the controller.
-    // Setting linewidth to 5 for a thicker line. (Note: linewidth is not supported on all platforms.)
     function createControllerLine() {
       const geometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
@@ -478,7 +511,7 @@
       ]);
       const material = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 5 });
       const line = new THREE.Line(geometry, material);
-      line.scale.z = 10; // Extend the line
+      line.scale.z = 10;
       return line;
     }
 
@@ -577,6 +610,10 @@
                 const isAPressed = gamepad.buttons[4].pressed; // "A" button for board placement
                 if (isAPressed && !wasAPressed && !boardPlaced) {
                   boardGroup.position.setFromMatrixPosition(reticle.matrix);
+                  // Rotate boardGroup so that its front faces the camera
+                  const camPos = new THREE.Vector3();
+                  camera.getWorldPosition(camPos);
+                  boardGroup.lookAt(new THREE.Vector3(camPos.x, boardGroup.position.y, camPos.z));
                   boardGroup.visible = true;
                   boardPlaced = true;
                   reticle.visible = false;
@@ -598,9 +635,20 @@
             const thumbstickX = gamepad.axes[2];
             const thumbstickY = gamepad.axes[3];
 
-            if (thumbstickX < -thumbstickThreshold && lastThumbstickX >= -thumbstickThreshold) movePiece(-1, 0);
-            else if (thumbstickX > thumbstickThreshold && lastThumbstickX <= thumbstickThreshold) movePiece(1, 0);
-            if (thumbstickY > thumbstickThreshold && lastThumbstickY <= thumbstickThreshold) movePiece(0, 1);
+            if (thumbstickX < -thumbstickThreshold && lastThumbstickX >= -thumbstickThreshold) {
+              movePiece(-1, 0);
+            } else if (thumbstickX > thumbstickThreshold && lastThumbstickX <= thumbstickThreshold) {
+              movePiece(1, 0);
+            }
+            // For continuous downward movement:
+            if (thumbstickY > thumbstickThreshold) {
+              if (timestamp - lastDownTimestamp > downRepeatDelay) {
+                movePiece(0, 1);
+                lastDownTimestamp = timestamp;
+              }
+            } else {
+              lastDownTimestamp = timestamp;
+            }
 
             const aButton = gamepad.buttons[4].pressed;
             if (aButton && !wasAPressed) rotatePiece();
@@ -622,11 +670,10 @@
     // PERFORMANCE NOTE:
     // WebXR performance is influenced by device capability and scene complexity.
     // For smoother graphics consider:
-    //   • Reusing geometries/materials (e.g. caching cube geometry)
+    //   • Reusing geometries/materials
     //   • Using instanced meshes for repeated objects
     //   • Minimizing frequent texture updates on the menu
     //   • Profiling and optimizing draw calls
-    // These improvements can help reduce lag on less powerful hardware.
   </script>
 </body>
 </html>
