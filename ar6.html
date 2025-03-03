@@ -150,19 +150,16 @@
       currentPiece.shape = rotatedShape;
       if (isValidMove(currentPiece)) {
         updateScene();
-        playSound(rotateSound);
         return;
       }
       currentPiece.position.x += 1;
       if (isValidMove(currentPiece)) {
         updateScene();
-        playSound(rotateSound);
         return;
       }
       currentPiece.position.x = originalPosition.x - 1;
       if (isValidMove(currentPiece)) {
         updateScene();
-        playSound(rotateSound);
         return;
       }
       currentPiece.shape = originalShape;
@@ -195,7 +192,6 @@
           }
         });
       });
-      playSound(hitSound);
       checkLines();
       currentPiece = nextPiece;
       nextPiece = getRandomPiece();
@@ -219,7 +215,6 @@
         lines += linesCleared;
         level = Math.floor(lines / 10) + 1;
         dropSpeed = Math.max(100, 1000 - (level - 1) * 100);
-        playSound(scoreSound);
         updateMenuTexture();
         if (gameInterval) {
           clearInterval(gameInterval);
@@ -243,18 +238,27 @@
     }
 
     // -----------------
-    // Audio Setup (using free sounds from Google Actions Sounds)
+    // Helper: Create Rounded Box Geometry
     // -----------------
-    const rotateSound = new Audio("https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg");
-    const hitSound = new Audio("https://actions.google.com/sounds/v1/impacts/wood_plank_flicks.ogg");
-    const scoreSound = new Audio("https://actions.google.com/sounds/v1/cartoon/pop.ogg");
-    const backgroundMusic = new Audio("https://actions.google.com/sounds/v1/music/oboe_classical.ogg");
-    backgroundMusic.loop = true;
-    backgroundMusic.volume = 0.3;
-    function playSound(sound) {
-      // Play sound without interrupting if already playing.
-      sound.currentTime = 0;
-      sound.play();
+    function createRoundedBox(width, height, depth, radius) {
+      const shape = new THREE.Shape();
+      shape.moveTo(-width/2 + radius, -height/2);
+      shape.lineTo(width/2 - radius, -height/2);
+      shape.quadraticCurveTo(width/2, -height/2, width/2, -height/2 + radius);
+      shape.lineTo(width/2, height/2 - radius);
+      shape.quadraticCurveTo(width/2, height/2, width/2 - radius, height/2);
+      shape.lineTo(-width/2 + radius, height/2);
+      shape.quadraticCurveTo(-width/2, height/2, -width/2, height/2 - radius);
+      shape.lineTo(-width/2, -height/2 + radius);
+      shape.quadraticCurveTo(-width/2, -height/2, -width/2 + radius, -height/2);
+      const extrudeSettings = {
+        depth: depth,
+        bevelEnabled: true,
+        bevelThickness: radius/2,
+        bevelSize: radius,
+        bevelSegments: 2
+      };
+      return new THREE.ExtrudeGeometry(shape, extrudeSettings);
     }
 
     // -----------------
@@ -275,7 +279,7 @@
     scene.add(light);
 
     // -----------------
-    // Board Group (holds all board‑related objects)
+    // Board Group (holds board‑related objects)
     // -----------------
     const boardGroup = new THREE.Group();
     boardGroup.visible = false;
@@ -289,10 +293,10 @@
     const ghostGroup = new THREE.Group();
     boardGroup.add(ghostGroup);
 
-    // Remove playable area background by not adding any mesh here.
+    // (No playable area background)
 
     // -----------------
-    // Next Piece Container – build as a group with a backing box and a front canvas plane.
+    // Next Piece Container – build as a group with a rounded backing and a front canvas plane.
     // -----------------
     const nextPieceGroup = new THREE.Group();
     function createNextPieceContainerTexture() {
@@ -300,7 +304,7 @@
       canvas.width = 128;
       canvas.height = 128;
       const ctx = canvas.getContext('2d');
-      // Use same container color as menu.
+      // Use same container color as menu (#1c1c1e) with transparency.
       ctx.fillStyle = 'rgba(28,28,30,0.8)';
       roundedRect(ctx, 5, 5, 118, 118, 10);
       ctx.fill();
@@ -311,12 +315,10 @@
     const nextPiecePlaneGeometry = new THREE.PlaneGeometry(0.5, 0.5);
     const nextPiecePlaneMaterial = new THREE.MeshBasicMaterial({ map: nextPieceContainerTexture, transparent: true });
     const nextPiecePlane = new THREE.Mesh(nextPiecePlaneGeometry, nextPiecePlaneMaterial);
-    // Create a backing box (for depth)
-    const nextPieceBox = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.5, 0.05),
-      new THREE.MeshBasicMaterial({ color: 0x1c1c1e })
-    );
-    // Group them so the plane sits slightly in front.
+    // Create a rounded backing box.
+    const nextPieceBoxGeometry = createRoundedBox(0.5, 0.5, 0.05, 0.1);
+    const nextPieceBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e });
+    const nextPieceBox = new THREE.Mesh(nextPieceBoxGeometry, nextPieceBoxMaterial);
     const nextPieceContainer = new THREE.Group();
     nextPieceContainer.add(nextPieceBox);
     nextPiecePlane.position.set(0, 0, 0.03);
@@ -324,12 +326,12 @@
     // The next piece preview group (rendered above the container) is offset.
     nextPieceGroup.position.set(0, 0, 0.1);
     nextPieceContainer.add(nextPieceGroup);
-    // Position container on the right (outside playable area).
+    // Position container on the right.
     nextPieceContainer.position.set((COLS/2 + 3) * cellSize, boardHeight / 2, 0);
     boardGroup.add(nextPieceContainer);
 
     // -----------------
-    // In‑game Menu – built as a group with a backing box and a front canvas plane.
+    // In‑game Menu – build as a group with a rounded backing and a front canvas plane.
     // -----------------
     function roundedRect(ctx, x, y, width, height, radius) {
       ctx.beginPath();
@@ -395,18 +397,16 @@
     const menuPlaneGeometry = new THREE.PlaneGeometry(menuAspect, 1);
     const menuPlaneMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
     const menuPlane = new THREE.Mesh(menuPlaneGeometry, menuPlaneMaterial);
-    // Make sure the menu plane renders in front.
     menuPlane.renderOrder = 1;
-    // Create a backing box for the menu.
-    const menuBox = new THREE.Mesh(
-      new THREE.BoxGeometry(menuAspect, 1, 0.05),
-      new THREE.MeshBasicMaterial({ color: 0x1c1c1e })
-    );
+    // Create a rounded backing box for the menu.
+    const menuBoxGeometry = createRoundedBox(menuAspect, 1, 0.05, 0.1);
+    const menuBoxMaterial = new THREE.MeshBasicMaterial({ color: 0x1c1c1e });
+    const menuBox = new THREE.Mesh(menuBoxGeometry, menuBoxMaterial);
     const menuGroup = new THREE.Group();
     menuGroup.add(menuBox);
     menuPlane.position.set(0, 0, 0.03);
     menuGroup.add(menuPlane);
-    // Position the menu on the left (outside the playable area).
+    // Position the menu on the left.
     menuGroup.position.set(- (COLS/2 + 3) * cellSize, boardHeight / 2, 0);
     boardGroup.add(menuGroup);
 
@@ -440,7 +440,7 @@
     }
 
     // -----------------
-    // Invisible Button Meshes for Raycasting (for menu interactions)
+    // Invisible Button Meshes for Menu Interaction
     // -----------------
     const buttonCanvasWidth = 256, buttonCanvasHeight = 420;
     const buttonXCanvas = 30;
@@ -508,7 +508,7 @@
     scene.add(controller2);
 
     // -----------------
-    // Reticle for board placement
+    // Reticle for Board Placement
     // -----------------
     let reticle;
     {
@@ -528,13 +528,10 @@
       const viewerSpace = await session.requestReferenceSpace('viewer');
       hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
       localSpace = await session.requestReferenceSpace('local');
-      // Start background music when session begins.
-      backgroundMusic.play();
     });
     renderer.xr.addEventListener('sessionend', () => {
       hitTestSource = null;
       localSpace = null;
-      backgroundMusic.pause();
     });
 
     function boardToWorld(row, col) {
@@ -806,7 +803,6 @@
       clearInterval(gameInterval);
       gameInterval = null;
       updateMenuTexture();
-      // Game over message is now displayed on the in‑game menu.
     }
   </script>
   <script>
