@@ -35,6 +35,14 @@
     let lastThumbstickX = 0;
     let lastThumbstickY = 0;
     let thumbstickThreshold = 0.5;
+    let downHeld = false;
+    let leftHeld = false;
+    let rightHeld = false;
+    let lastDownTime = 0;
+    let lastLeftTime = 0;
+    let lastRightTime = 0;
+    const downInterval = 50; // ms
+    const moveInterval = 100; // ms
 
     // Tetromino definitions
     const THEMES = {
@@ -81,7 +89,7 @@
             const boardRow = position.y + row + offsetY;
             const boardCol = position.x + col + offsetX;
             if (boardCol < 0 || boardCol >= COLS || boardRow >= ROWS) return false;
-            if (boardRow >= 0 && boardRow >=0 && boardRow < ROWS && board[boardRow][boardCol]) return false; // Fix: boardRow >=0 added
+            if (boardRow >= 0 && board[boardRow][boardCol]) return false;
           }
         }
       }
@@ -213,13 +221,22 @@
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
     scene.add(light);
 
+    // Board group holds all board-related objects.
     const boardGroup = new THREE.Group();
     boardGroup.visible = false;
     scene.add(boardGroup);
+
+    // New group for board cubes (placed pieces) to avoid removing dynamic groups.
+    const boardCubesGroup = new THREE.Group();
+    boardGroup.add(boardCubesGroup);
+
+    // Active piece and ghost groups are children of boardGroup.
     const activePieceGroup = new THREE.Group();
-    scene.add(activePieceGroup);
+    boardGroup.add(activePieceGroup);
     const ghostGroup = new THREE.Group();
-    scene.add(ghostGroup);
+    boardGroup.add(ghostGroup);
+
+    // Next piece group remains inside boardGroup (positioned on the side)
     const nextPieceGroup = new THREE.Group();
     boardGroup.add(nextPieceGroup);
     nextPieceGroup.position.set((COLS/2 + 2) * cellSize, boardHeight / 2, 0);
@@ -248,19 +265,18 @@
       localSpace = null;
     });
 
-    // Coordinate conversion
+    // Coordinate conversion (positions in boardGroup-local coordinates)
     function boardToWorld(row, col) {
       const x = (col - COLS/2) * cellSize + cellSize/2;
-      const y = boardHeight - row * cellSize - cellSize/2; // Corrected Y position to align pieces
+      const y = boardHeight - row * cellSize - cellSize;
       const z = 0;
       return new THREE.Vector3(x, y, z);
     }
 
-    // 3D rendering
+    // 3D rendering functions
     function renderBoard3D() {
-      // Remove all board cubes except the nextPieceGroup
-      while(boardGroup.children.length > 1) {
-        boardGroup.remove(boardGroup.children[0]);
+      while(boardCubesGroup.children.length > 0) {
+        boardCubesGroup.remove(boardCubesGroup.children[0]);
       }
       for (let row = 0; row < ROWS; row++) {
         for (let col = 0; col < COLS; col++) {
@@ -270,7 +286,7 @@
             const material = new THREE.MeshStandardMaterial({ color: board[row][col] });
             const cube = new THREE.Mesh(geometry, material);
             cube.position.copy(pos);
-            boardGroup.add(cube);
+            boardCubesGroup.add(cube);
           }
         }
       }
@@ -376,7 +392,6 @@
       ctx.closePath();
     }
 
-    // Improved drawButton with centered text
     function drawButton(ctx, x, y, width, height, text) {
       const gradient = ctx.createLinearGradient(x, y, x, y + height);
       gradient.addColorStop(0, '#555');
@@ -415,7 +430,9 @@
 
     const menuTexture = new THREE.CanvasTexture(createMenuTexture());
     const menuMaterial = new THREE.MeshBasicMaterial({ map: menuTexture, transparent: true });
-    const menuGeometry = new THREE.PlaneGeometry(1, 1);
+    const menuWidth = 0.4;
+    const menuHeight = 0.4;
+    const menuGeometry = new THREE.PlaneGeometry(menuWidth, menuHeight);
     const menuMesh = new THREE.Mesh(menuGeometry, menuMaterial);
     menuGroup.add(menuMesh);
 
@@ -440,33 +457,50 @@
       menuTexture.needsUpdate = true;
     }
 
-    // Button meshes for visual feedback and raycasting
-    const buttonGeometry = new THREE.PlaneGeometry(0.1953, 0.0781);
-    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x808080, transparent: true, opacity: 0.5 });
-    const startButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    startButtonMesh.position.set(-0.3633, 0.1484, 0.01);
-    menuGroup.add(startButtonMesh);
+    // Button meshes for raycasting
+    const buttonMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0 });
 
-    const pauseButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    pauseButtonMesh.position.set(-0.3633, 0.0508, 0.01);
-    menuGroup.add(pauseButtonMesh);
+    function canvasToLocal(x, y, canvasWidth, canvasHeight, planeWidth, planeHeight) {
+      const u = x / canvasWidth;
+      const v = 1 - y / canvasHeight;
+      const localX = (-0.5 + u) * planeWidth;
+      const localY = (-0.5 + v) * planeHeight;
+      return { x: localX, y: localY };
+    }
 
-    const restartButtonMesh = new THREE.Mesh(buttonGeometry, buttonMaterial);
-    restartButtonMesh.position.set(-0.3633, -0.0465, 0.01);
-    menuGroup.add(restartButtonMesh);
+    const buttons = [
+      { name: 'start', x: 80, y: 180 },
+      { name: 'pause', x: 80, y: 230 },
+      { name: 'restart', x: 80, y: 280 }
+    ];
 
-    const buttonMeshes = [startButtonMesh, pauseButtonMesh, restartButtonMesh];
+    const buttonMeshes = buttons.map(button => {
+      const pos = canvasToLocal(button.x, button.y, 512, 512, menuWidth, menuHeight);
+      const size = { width: 100 / 512 * menuWidth, height: 40 / 512 * menuHeight };
+      const geometry = new THREE.PlaneGeometry(size.width, size.height);
+      const mesh = new THREE.Mesh(geometry, buttonMaterial);
+      mesh.position.set(pos.x, pos.y, 0.01);
+      mesh.userData.buttonName = button.name;
+      menuGroup.add(mesh);
+      return mesh;
+    });
+
     const raycaster = new THREE.Raycaster();
     const tempMatrix = new THREE.Matrix4();
 
-    // Raycast line visualization
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]);
-    const line = new THREE.Line(lineGeometry, lineMaterial);
-    line.name = 'controllerLine'; // Naming for easy access later
-    controller1.add(line); // Add line to the controller
+    // Create a visible ray (pointer) for the controller
+    function createControllerLine() {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, -1)
+      ]);
+      const material = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 5 });
+      const line = new THREE.Line(geometry, material);
+      line.scale.z = 10;
+      return line;
+    }
 
-    // Allow keyboard controls for testing
+    // Keyboard controls for testing
     function handleKeydown(event) {
       if (isPaused || isGameOver) return;
       switch(event.key) {
@@ -507,19 +541,17 @@
       alert("Game Over! Final Score: " + score);
     }
 
-    // Add XR controller select event for menu interactions
+    // XR controller select event for menu interactions
     function onSelect(event) {
-      // Cast a ray from the controller to detect menu buttons
       tempMatrix.identity().extractRotation(event.target.matrixWorld);
       raycaster.ray.origin.setFromMatrixPosition(event.target.matrixWorld);
       raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
       const intersects = raycaster.intersectObjects(buttonMeshes);
       if (intersects.length > 0) {
-        const button = intersects[0].object;
-        if (button === startButtonMesh) {
+        const buttonName = intersects[0].object.userData.buttonName;
+        if (buttonName === 'start') {
           startGame();
-        } else if (button === pauseButtonMesh && !isGameOver) {
+        } else if (buttonName === 'pause' && !isGameOver) {
           isPaused = !isPaused;
           if (isPaused) {
             clearInterval(gameInterval);
@@ -527,17 +559,20 @@
             gameInterval = setInterval(dropPiece, dropSpeed);
           }
           updateMenuTexture();
-        } else if (button === restartButtonMesh) {
+        } else if (buttonName === 'restart') {
           startGame();
         }
       }
     }
 
+    // Setup controllers
     const controller1 = renderer.xr.getController(0);
+    controller1.add(createControllerLine());
     controller1.addEventListener('select', onSelect);
     scene.add(controller1);
 
     const controller2 = renderer.xr.getController(1);
+    controller2.add(createControllerLine());
     controller2.addEventListener('select', onSelect);
     scene.add(controller2);
 
@@ -557,9 +592,10 @@
             for (const source of session.inputSources) {
               if (source.handedness === 'right' && source.gamepad) {
                 const gamepad = source.gamepad;
-                const isAPressed = gamepad.buttons[4].pressed; // "A" button for board placement
+                const isAPressed = gamepad.buttons[4].pressed; // "A" button
                 if (isAPressed && !wasAPressed && !boardPlaced) {
                   boardGroup.position.setFromMatrixPosition(reticle.matrix);
+                  boardGroup.lookAt(camera.position); // Ensure board faces user
                   boardGroup.visible = true;
                   boardPlaced = true;
                   reticle.visible = false;
@@ -573,43 +609,68 @@
         }
       }
 
-      // Raycasting and line update for controller
-      controller1.updateMatrixWorld();
-      tempMatrix.identity().extractRotation(controller1.matrixWorld);
-      raycaster.ray.origin.setFromMatrixPosition(controller1.matrixWorld);
-      raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-
-      const intersectsMenu = raycaster.intersectObjects([menuMesh]); // Raycast against the menu
-      const lineEndPoint = new THREE.Vector3(0, 0, -1); // Default line length
-      if (intersectsMenu.length > 0) {
-        lineEndPoint.set(0, 0, -intersectsMenu[0].distance); // Adjust line length to intersection
-      } else {
-        lineEndPoint.set(0, 0, -5); // Fixed line length if no intersection, adjust as needed
-      }
-
-      const controllerLine = controller1.getObjectByName('controllerLine');
-      controllerLine.geometry.setFromPoints([new THREE.Vector3(0, 0, 0), lineEndPoint]);
-
-      // Use thumbstick input for gameplay actions (moving/rotating/dropping pieces)
+      // Thumbstick input for gameplay
       if (session && boardPlaced) {
         for (const source of session.inputSources) {
           if (source.handedness === 'right' && source.gamepad) {
             const gamepad = source.gamepad;
-            const thumbstickX = gamepad.axes[2]; // Right thumbstick X-axis
-            const thumbstickY = gamepad.axes[3]; // Right thumbstick Y-axis
+            const thumbstickX = gamepad.axes[2];
+            const thumbstickY = gamepad.axes[3];
 
-            // Move left/right with thumbstick X-axis
-            if (thumbstickX < -thumbstickThreshold && lastThumbstickX >= -thumbstickThreshold) movePiece(-1, 0);
-            else if (thumbstickX > thumbstickThreshold && lastThumbstickX <= thumbstickThreshold) movePiece(1, 0);
+            // Left movement
+            if (thumbstickX < -thumbstickThreshold) {
+              if (!leftHeld) {
+                leftHeld = true;
+                lastLeftTime = performance.now();
+                movePiece(-1, 0);
+              } else {
+                const currentTime = performance.now();
+                if (currentTime - lastLeftTime > moveInterval) {
+                  movePiece(-1, 0);
+                  lastLeftTime = currentTime;
+                }
+              }
+            } else {
+              leftHeld = false;
+            }
 
-            // Move down faster with thumbstick Y-axis
-            if (thumbstickY > thumbstickThreshold && lastThumbstickY <= thumbstickThreshold) movePiece(0, 1);
+            // Right movement
+            if (thumbstickX > thumbstickThreshold) {
+              if (!rightHeld) {
+                rightHeld = true;
+                lastRightTime = performance.now();
+                movePiece(1, 0);
+              } else {
+                const currentTime = performance.now();
+                if (currentTime - lastRightTime > moveInterval) {
+                  movePiece(1, 0);
+                  lastRightTime = currentTime;
+                }
+              }
+            } else {
+              rightHeld = false;
+            }
 
-            // Rotate with "A" button (while not interfering with board placement)
+            // Down movement
+            if (thumbstickY > thumbstickThreshold) {
+              if (!downHeld) {
+                downHeld = true;
+                lastDownTime = performance.now();
+                movePiece(0, 1);
+              } else {
+                const currentTime = performance.now();
+                if (currentTime - lastDownTime > downInterval) {
+                  movePiece(0, 1);
+                  lastDownTime = currentTime;
+                }
+              }
+            } else {
+              downHeld = false;
+            }
+
             const aButton = gamepad.buttons[4].pressed;
             if (aButton && !wasAPressed) rotatePiece();
 
-            // Hard drop with "B" button
             const bButton = gamepad.buttons[5].pressed;
             if (bButton) hardDrop();
 
