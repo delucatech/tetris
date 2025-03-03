@@ -1,4 +1,3 @@
-<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -46,9 +45,9 @@
     }
     .game-area {
       display: flex;
-      /* flex-wrap: wrap; Removed flex-wrap */
+      flex-wrap: wrap;
       justify-content: center;
-      align-items: flex-start; /* Changed align-items to flex-start */
+      align-items: center;
       transform: rotateX(10deg); /* subtle 3D tilt for depth */
       margin-bottom: 0px;
     }
@@ -94,7 +93,7 @@
     }
     .info {
       display: flex;
-      flex-direction: column; /* Keep info column */
+      flex-direction: column;
       align-items: center;
       gap: 10px;
       margin: 0.5rem;
@@ -113,19 +112,18 @@
     /* Mobile Controls – hidden by default */
     .mobile-controls {
       display: none;
-      margin-top: 1rem; /* Add some top margin to separate from toggle */
     }
     /* On touch devices, fix controls at bottom */
     @media (hover: none) and (pointer: coarse) {
       .mobile-controls {
-        display: flex; /* Keep display flex */
-        position: static; /* Changed to static to position under info */
-        bottom: auto; /* Reset bottom */
-        left: auto; /* Reset left */
-        right: auto; /* Reset right */
+        display: flex;
+        position: fixed;
+        bottom: env(safe-area-inset-bottom, 10px);
+        left: 0;
+        right: 0;
         justify-content: space-around;
-        background: none; /* Remove background */
-        padding: 0; /* Remove padding */
+        background: rgba(0, 0, 0, 0.7);
+        padding: 10px;
         z-index: 1000;
       }
     }
@@ -203,13 +201,6 @@
           <input type="checkbox" id="ghost-toggle" checked />
           <label for="ghost-toggle">Show Ghost</label>
         </div>
-        <div class="mobile-controls" style="display: flex;margin-bottom: 5px;">
-          <button id="left-btn">Left</button>
-          <button id="right-btn">Right</button>
-          <button id="rotate-btn">Rotate</button>
-          <button id="down-btn">Down</button>
-          <button id="drop-btn">Drop</button>
-        </div>
       </div>
     </div>
     <div class="controls">
@@ -217,13 +208,19 @@
       <button id="pause-btn">Pause</button>
       <button id="restart-btn">Restart</button>
     </div>
+    <div class="mobile-controls" style="display: flex;margin-bottom: 5px;">
+      <button id="left-btn">Left</button>
+      <button id="right-btn">Right</button>
+      <button id="rotate-btn">Rotate</button>
+      <button id="down-btn">Down</button>
+      <button id="drop-btn">Drop</button>
+    </div>
     <div id="game-over">
       <h2>Game Over</h2>
       <p>Final Score: <span id="final-score">0</span></p>
       <button id="restart-btn">Restart</button>
     </div>
   </div>
-
   <script>
     // Update board cell size so that header, game area and controls all fit in viewport.
     // Subtract an extra 8px to account for the board border at the bottom.
@@ -724,7 +721,7 @@
     boardElement.addEventListener('touchmove', (e) => {
       e.preventDefault();
     }, { passive: false });
-
+    
     // If touch movement is small, treat it as a tap (rotate).
     // Otherwise, a horizontal swipe moves left/right and a downward swipe hard drops.
     function handleSwipe() {
