@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Matrix Walls AR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    #menuContainer {
+      background: #1c1c1e;
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <div id="menuContainer">
+      <h1>Matrix Walls AR</h1>
+      <button id="enterAR">Enter AR</button>
+    </div>
+  </div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/webxr/ARButton.js';
+
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // AR button
+    const arButton = ARButton.createButton(renderer, {
+      optionalFeatures: ['plane-detection']
+    });
+    arButton.style.display = 'none';
+    document.body.appendChild(arButton);
+
+    // Video texture for Matrix effect
+    const video = document.createElement('video');
+    video.src = 'matrix.mp4'; // Replace with your Matrix video file
+    video.loop = true;
+    video.muted = true;
+    video.play().catch(e => console.error('Video play failed:', e));
+    const texture = new THREE.VideoTexture(video);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.format = THREE.RGBFormat;
+
+    // Material
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      color: 0x00ff00,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide
+    });
+
+    // Wall mesh management
+    const wallMeshes = new Map();
+
+    function getPlaneSize(plane) {
+      const points = plane.polygon;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const point of points) {
+        minX = Math.min(minX, point.x);
+        minY = Math.min(minY, point.y);
+        maxX = Math.max(maxX, point.x);
+        maxY = Math.max(maxY, point.y);
+      }
+      return { width: maxX - minX, height: maxY - minY };
+    }
+
+    function createWallMesh(plane) {
+      const { width, height } = getPlaneSize(plane);
+      const geometry = new THREE.PlaneGeometry(width, height);
+      const mesh = new THREE.Mesh(geometry, material);
+      const pose = plane.getPose(renderer.xr.getReferenceSpace());
+      if (pose) {
+        mesh.matrix.fromArray(pose.transform.matrix);
+        mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+      }
+      return mesh;
+    }
+
+    function updateWallMesh(mesh, plane) {
+      const pose = plane.getPose(renderer.xr.getReferenceSpace());
+      if (pose) {
+        mesh.matrix.fromArray(pose.transform.matrix);
+        mesh.matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
+      }
+    }
+
+    // Animation loop
+    function animate(timestamp, frame) {
+      if (frame) {
+        const planes = frame.detectedPlanes;
+        if (planes) {
+          for (const plane of planes) {
+            if (plane.orientation === 'vertical') {
+              if (!wallMeshes.has(plane)) {
+                const mesh = createWallMesh(plane);
+                wallMeshes.set(plane, mesh);
+                scene.add(mesh);
+              }
+              updateWallMesh(wallMeshes.get(plane), plane);
+            }
+          }
+          for (const [plane, mesh] of wallMeshes) {
+            if (!planes.has(plane)) {
+              scene.remove(mesh);
+              wallMeshes.delete(plane);
+            }
+          }
+        }
+      }
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(animate);
+
+    // Start AR on button click
+    document.getElementById('enterAR').addEventListener('click', () => {
+      document.getElementById('overlay').style.display = 'none';
+      arButton.click();
+      if (video.paused) video.play();
+    });
+  </script>
+</body>
+</html>
